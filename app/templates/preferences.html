@@ -39,17 +39,20 @@
       </label>
       <label>
         Student name
-        <input
-          type="text"
-          id="student_name_input"
-          name="student_name"
-          list="student-options"
-          placeholder="Search and select student"
-          autocomplete="off"
-          required
-          maxlength="200"
-          value="{{ pending_student_name or '' }}"
-        />
+        <div class="class-select-wrap">
+          <button type="button" id="clear_student_name" class="clear-class-btn" aria-label="Clear student name">X</button>
+          <input
+            type="text"
+            id="student_name_input"
+            name="student_name"
+            list="student-options"
+            placeholder="Search and select student"
+            autocomplete="off"
+            required
+            maxlength="200"
+            value="{{ pending_student_name or '' }}"
+          />
+        </div>
       </label>
       <p class="form-info" id="student-autofill-note" aria-live="polite"></p>
       <fieldset class="grade-picker">
@@ -190,14 +193,18 @@
   <form method="get" action="/preferences" class="grid-form compact-form">
     <label>
       Student name
-      <input
-        type="text"
-        name="lookup_student_name"
-        list="student-options"
-        placeholder="Search and select student"
-        autocomplete="off"
-        value="{{ lookup_student_name or '' }}"
-      />
+      <div class="class-select-wrap">
+        <button type="button" id="clear_lookup_student_name" class="clear-class-btn" aria-label="Clear lookup student">X</button>
+        <input
+          type="text"
+          id="lookup_student_name_input"
+          name="lookup_student_name"
+          list="student-options"
+          placeholder="Search and select student"
+          autocomplete="off"
+          value="{{ lookup_student_name or '' }}"
+        />
+      </div>
     </label>
     <datalist id="student-options">
       {% for student_name in student_name_options %}
@@ -247,6 +254,15 @@
 {% block scripts %}
 <script>
   (() => {
+    const lookupStudentInput = document.getElementById("lookup_student_name_input");
+    const clearLookupStudentButton = document.getElementById("clear_lookup_student_name");
+    if (lookupStudentInput && clearLookupStudentButton) {
+      clearLookupStudentButton.addEventListener("click", () => {
+        lookupStudentInput.value = "";
+        lookupStudentInput.focus();
+      });
+    }
+
     const form = document.getElementById("preference-form");
     if (!form) return;
 
@@ -257,6 +273,7 @@
     const clearGoodButton = document.getElementById("clear_good_class");
     const clearBadButton = document.getElementById("clear_bad_class");
     const studentInput = document.getElementById("student_name_input");
+    const clearStudentButton = document.getElementById("clear_student_name");
     const studentInfo = document.getElementById("student-autofill-note");
     const classOptions = Array.from(document.querySelectorAll("#class-options option"));
     const studentOptions = Array.from(document.querySelectorAll("#student-options option"));
@@ -264,6 +281,7 @@
     const errorText = document.getElementById("pair-error");
     const submitButton = document.getElementById("save-preference-btn");
     const gradeInputs = Array.from(form.querySelectorAll('input[name="student_grade"]'));
+    const preferenceStateKey = "classranker_preference_form_state";
 
     const normalize = (value) => value.trim().toLowerCase();
     const valueToId = new Map();
@@ -414,6 +432,39 @@
       syncDistinctSelection();
     };
 
+    const savePreferenceState = () => {
+      if (!studentInput) return;
+      const state = {
+        student_name: studentInput.value || "",
+        good_label: goodInput.value || "",
+        bad_label: badInput.value || "",
+        good_id: goodHidden.value || "",
+        bad_id: badHidden.value || "",
+      };
+      window.sessionStorage.setItem(preferenceStateKey, JSON.stringify(state));
+    };
+
+    const restorePreferenceState = () => {
+      if (!studentInput) return;
+      if (studentInput.value.trim() || goodInput.value.trim() || badInput.value.trim()) {
+        return;
+      }
+      const rawState = window.sessionStorage.getItem(preferenceStateKey);
+      if (!rawState) return;
+
+      try {
+        const parsed = JSON.parse(rawState);
+        studentInput.value = parsed.student_name || "";
+        goodInput.value = parsed.good_label || "";
+        badInput.value = parsed.bad_label || "";
+        goodHidden.value = parsed.good_id || "";
+        badHidden.value = parsed.bad_id || "";
+      } catch (_error) {
+        return;
+      }
+      refresh();
+    };
+
     const forceDifferentSelection = (changedInput, changedHidden, otherInput, otherHidden) => {
       if (!changedHidden.value || changedHidden.value !== otherHidden.value) return;
       otherInput.value = "";
@@ -457,6 +508,14 @@
         clearSelection(badInput, badHidden);
       });
     }
+    if (clearStudentButton && studentInput) {
+      clearStudentButton.addEventListener("click", () => {
+        studentInput.value = "";
+        lookupRequestId += 1;
+        setStudentInfo("");
+        studentInput.focus();
+      });
+    }
     if (studentInput) {
       studentInput.addEventListener("input", scheduleStudentLookup);
       studentInput.addEventListener("change", () => {
@@ -471,9 +530,12 @@
       refresh();
       if (!goodHidden.value || !badHidden.value || submitButton.disabled) {
         event.preventDefault();
+        return;
       }
+      savePreferenceState();
     });
 
+    restorePreferenceState();
     refresh();
   })();
 </script>

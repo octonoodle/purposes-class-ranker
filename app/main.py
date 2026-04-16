@@ -380,6 +380,10 @@ def create_preference(
             {
                 "message": message,
                 "pending_recorded_by": normalized_recorded_by,
+                "pending_student_name": normalized_student_name,
+                "pending_student_grade": student_grade,
+                "pending_good_class_id": good_class_id,
+                "pending_bad_class_id": bad_class_id,
             }
         )
         return set_recorder_cookie(

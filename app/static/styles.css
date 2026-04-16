@@ -594,3 +594,14 @@ tbody tr:nth-child(2n) {
     padding: 0.22rem 0.38rem;
   }
 }
+
+/* Prevent iOS Safari from auto-zooming when focusing form fields. */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 760px) {
+    input:not([type="radio"]):not([type="hidden"]),
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+}
