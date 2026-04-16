@@ -58,7 +58,7 @@ uvicorn app.main:app
 - http://127.0.0.1:8000/classes
 - http://127.0.0.1:8000/edit
 - http://127.0.0.1:8000/rankings
-- http://127.0.0.1:8000/recorders
+- http://127.0.0.1:8000/stats
 
 ## Notes on concurrency
 - Inserts run in database transactions.

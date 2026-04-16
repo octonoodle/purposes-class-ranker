@@ -256,6 +256,47 @@ button:disabled {
   color: var(--red);
 }
 
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.55rem;
+}
+
+.stat-card {
+  margin: 0;
+  padding: 0.6rem 0.65rem;
+  border: 1px solid var(--bg2);
+  border-radius: 10px;
+  background: rgba(40, 40, 40, 0.55);
+}
+
+.stat-card-wide {
+  grid-column: 1 / -1;
+}
+
+.stat-label {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--aqua);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.stat-value {
+  margin: 0.28rem 0 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--fg);
+}
+
+.stat-value-small {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--fg-soft);
+  line-height: 1.25;
+}
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--bg2);
@@ -522,6 +563,14 @@ tbody tr:nth-child(2n) {
 
   .panel {
     padding: 0.72rem;
+  }
+
+  .stat-card {
+    padding: 0.52rem 0.55rem;
+  }
+
+  .stat-value {
+    font-size: 1.35rem;
   }
 
   table {

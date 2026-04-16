@@ -653,6 +653,15 @@ def edit_preference_record(
 
 
 @app.get("/recorders")
+def recorder_page_redirect(request: Request) -> RedirectResponse:
+    query = request.url.query
+    target = "/stats"
+    if query:
+        target = f"{target}?{query}"
+    return RedirectResponse(url=target, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@app.get("/stats")
 def recorder_rankings_page(
     request: Request,
     sort: str = "total_preferences",
@@ -685,6 +694,24 @@ def recorder_rankings_page(
         .order_by(primary_order, Preference.recorded_by.asc())
     ).all()
 
+    summary_row = db.execute(
+        select(
+            func.count(Preference.id).label("total_preferences"),
+            func.count(func.distinct(Preference.student_name)).label("total_unique_students"),
+            func.count(func.distinct(Preference.recorded_by)).label("total_recorders"),
+            func.max(Preference.created_at).label("latest_recorded_at"),
+        )
+    ).one()
+    total_classes = db.execute(select(func.count(Class.id))).scalar_one()
+    touched_class_ids = (
+        select(Preference.good_class_id.label("class_id"))
+        .union_all(select(Preference.bad_class_id.label("class_id")))
+        .subquery()
+    )
+    touched_classes = db.execute(
+        select(func.count(func.distinct(touched_class_ids.c.class_id)))
+    ).scalar_one()
+
     return templates.TemplateResponse(
         request=request,
         name="recorders.html",
@@ -692,6 +719,14 @@ def recorder_rankings_page(
             "recorder_rankings": recorder_rankings,
             "sort_key": sort_key,
             "sort_dir": sort_dir,
+            "stats": {
+                "total_preferences": summary_row.total_preferences or 0,
+                "total_unique_students": summary_row.total_unique_students or 0,
+                "total_recorders": summary_row.total_recorders or 0,
+                "latest_recorded_at": summary_row.latest_recorded_at,
+                "touched_classes": touched_classes or 0,
+                "total_classes": total_classes or 0,
+            },
         },
     )
 
