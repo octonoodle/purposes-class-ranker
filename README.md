@@ -64,3 +64,11 @@ uvicorn app.main:app
 - Inserts run in database transactions.
 - PostgreSQL handles concurrent writers safely.
 - Preference writes take row-level read locks on selected classes during validation.
+
+## Built with Codex 5.3
+Codex 5.3 played a major implementation role in this project. It handled most of the end-to-end engineering work, including:
+- selecting and scaffolding the FastAPI + SQLAlchemy + PostgreSQL stack
+- building the core data models, routes, templates, and ranking logic
+- implementing concurrency-safe preference writes and validation rules
+- iterating on mobile/UI improvements, search/select UX, and edit flows
+- applying and verifying changes quickly across backend, frontend, and docs
