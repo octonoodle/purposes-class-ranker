@@ -716,13 +716,14 @@ def rankings_page(
     )
     wins_expr = func.coalesce(wins_subq.c.wins, 0)
     losses_expr = func.coalesce(losses_subq.c.losses, 0)
+    total_ratings_expr = wins_expr + losses_expr
     net_score_expr = wins_expr - losses_expr
     win_rate_expr = case(
         (
-            (wins_expr + losses_expr) == 0,
+            total_ratings_expr == 0,
             0.0,
         ),
-        else_=(wins_expr / (wins_expr + losses_expr)),
+        else_=(wins_expr / total_ratings_expr),
     )
 
     ranking_sort_columns = {
@@ -737,6 +738,12 @@ def rankings_page(
     sort_key = sort if sort in ranking_sort_columns else "net_score"
     sort_expr = ranking_sort_columns[sort_key]
     primary_order = sort_expr.asc() if sort_dir == "asc" else sort_expr.desc()
+    total_ratings_tiebreak = total_ratings_expr.desc()
+
+    if sort_key == "net_score":
+        order_by_columns = [primary_order, total_ratings_tiebreak, Class.class_name.asc(), Class.class_code.asc()]
+    else:
+        order_by_columns = [primary_order, Class.class_name.asc(), Class.class_code.asc()]
 
     rankings = db.execute(
         select(
@@ -748,7 +755,7 @@ def rankings_page(
         )
         .outerjoin(wins_subq, wins_subq.c.class_id == Class.id)
         .outerjoin(losses_subq, losses_subq.c.class_id == Class.id)
-        .order_by(primary_order, Class.class_name.asc(), Class.class_code.asc())
+        .order_by(*order_by_columns)
     ).all()
 
     return templates.TemplateResponse(
