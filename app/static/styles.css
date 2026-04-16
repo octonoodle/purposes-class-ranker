@@ -97,6 +97,31 @@ main {
   gap: 0.9rem;
 }
 
+.preferences-layout {
+  grid-template-areas:
+    "add recent"
+    "search search";
+}
+
+.preferences-layout .add-preference-panel {
+  grid-area: add;
+}
+
+.preferences-layout .recent-preferences-panel {
+  grid-area: recent;
+}
+
+.preferences-layout .student-search-panel {
+  grid-area: search;
+}
+
+.preferences-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(320px, 1fr) minmax(320px, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+}
+
 .panel {
   background: linear-gradient(180deg, rgba(60, 56, 54, 0.62), rgba(50, 48, 47, 0.76));
   border: 1px solid var(--bg2);
@@ -443,6 +468,17 @@ tbody tr:nth-child(2n) {
     grid-template-columns: 1fr;
   }
 
+  .preferences-layout {
+    grid-template-areas:
+      "add"
+      "search"
+      "recent";
+  }
+
+  .preferences-grid {
+    grid-template-columns: 1fr;
+  }
+
   .edit-layout {
     grid-template-columns: 1fr;
   }
@@ -585,6 +621,32 @@ tbody tr:nth-child(2n) {
 
   .table-wrap td[colspan]::before {
     content: none;
+  }
+
+  .recent-prefs-table tr {
+    margin-bottom: 0.28rem;
+    padding: 0.2rem 0.3rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.14rem 0.35rem;
+  }
+
+  .recent-prefs-table td {
+    display: block;
+    padding: 0.02rem 0;
+    min-width: 0;
+    font-size: 0.87rem;
+  }
+
+  .recent-prefs-table td::before {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: 0.015em;
+    margin-bottom: 0.04rem;
+  }
+
+  .recent-prefs-table td:nth-child(5) {
+    grid-column: 1 / -1;
   }
 }
 

@@ -2,8 +2,8 @@
 {% set title = "Preferences | Class Ranker" %}
 
 {% block content %}
-<div class="split">
-  <section class="panel">
+<div class="split preferences-layout">
+  <section class="panel add-preference-panel">
     <h2>Add Preference</h2>
     {% if classes|length < 2 %}
     <p>Add at least two classes first on the <a href="/classes">classes page</a>.</p>
@@ -155,9 +155,9 @@
     {% endif %}
   </section>
 
-  <section class="panel">
+  <section class="panel recent-preferences-panel">
     <h2>Recent Preferences</h2>
-    <div class="table-wrap">
+    <div class="table-wrap recent-prefs-table">
       <table>
         <thead>
           <tr>
@@ -186,69 +186,69 @@
       </table>
     </div>
   </section>
-</div>
 
-<section class="panel">
-  <h2>Find Student Preferences</h2>
-  <form method="get" action="/preferences" class="grid-form compact-form">
-    <label>
-      Student name
-      <div class="class-select-wrap">
-        <button type="button" id="clear_lookup_student_name" class="clear-class-btn" aria-label="Clear lookup student">X</button>
-        <input
-          type="text"
-          id="lookup_student_name_input"
-          name="lookup_student_name"
-          list="student-options"
-          placeholder="Search and select student"
-          autocomplete="off"
-          value="{{ lookup_student_name or '' }}"
-        />
-      </div>
-    </label>
-    <datalist id="student-options">
-      {% for student_name in student_name_options %}
-      <option value="{{ student_name }}"></option>
-      {% endfor %}
-    </datalist>
-    <button type="submit">Search</button>
-  </form>
-
-  {% if lookup_student_name %}
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Recorded By</th>
-          <th>Student</th>
-          <th>Grade</th>
-          <th>Good Class</th>
-          <th>Bad Class</th>
-          <th>Recorded At</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for pref, good_name, bad_name, good_code, bad_code in student_preferences %}
-        <tr>
-          <td data-label="Recorded By">{{ pref.recorded_by }}</td>
-          <td data-label="Student">{{ pref.student_name }}</td>
-          <td data-label="Grade">{{ pref.student_grade }}</td>
-          <td data-label="Good Class">{{ good_name }} ({{ good_code }})</td>
-          <td data-label="Bad Class">{{ bad_name }} ({{ bad_code }})</td>
-          <td data-label="Recorded At">{{ pref.created_at }}</td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="6">No preferences found for this student.</td>
-        </tr>
+  <section class="panel student-search-panel">
+    <h2>Find Student Preferences</h2>
+    <form method="get" action="/preferences" class="grid-form compact-form">
+      <label>
+        Student name
+        <div class="class-select-wrap">
+          <button type="button" id="clear_lookup_student_name" class="clear-class-btn" aria-label="Clear lookup student">X</button>
+          <input
+            type="text"
+            id="lookup_student_name_input"
+            name="lookup_student_name"
+            list="student-options"
+            placeholder="Search and select student"
+            autocomplete="off"
+            value="{{ lookup_student_name or '' }}"
+          />
+        </div>
+      </label>
+      <datalist id="student-options">
+        {% for student_name in student_name_options %}
+        <option value="{{ student_name }}"></option>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p>Enter a student name to view all their recorded preferences.</p>
-  {% endif %}
-</section>
+      </datalist>
+      <button type="submit">Search</button>
+    </form>
+
+    {% if lookup_student_name %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Recorded By</th>
+            <th>Student</th>
+            <th>Grade</th>
+            <th>Good Class</th>
+            <th>Bad Class</th>
+            <th>Recorded At</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pref, good_name, bad_name, good_code, bad_code in student_preferences %}
+          <tr>
+            <td data-label="Recorded By">{{ pref.recorded_by }}</td>
+            <td data-label="Student">{{ pref.student_name }}</td>
+            <td data-label="Grade">{{ pref.student_grade }}</td>
+            <td data-label="Good Class">{{ good_name }} ({{ good_code }})</td>
+            <td data-label="Bad Class">{{ bad_name }} ({{ bad_code }})</td>
+            <td data-label="Recorded At">{{ pref.created_at }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6">No preferences found for this student.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p>Enter a student name to view all their recorded preferences.</p>
+    {% endif %}
+  </section>
+</div>
 {% endblock %}
 
 {% block scripts %}

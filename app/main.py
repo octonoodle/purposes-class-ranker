@@ -259,7 +259,7 @@ def preferences_page(
         .join(good_cls, good_cls.id == Preference.good_class_id)
         .join(bad_cls, bad_cls.id == Preference.bad_class_id)
         .order_by(Preference.created_at.desc())
-        .limit(50)
+        .limit(15)
     ).all()
 
     student_preferences = []
