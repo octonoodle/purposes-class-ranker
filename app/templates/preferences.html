@@ -96,15 +96,18 @@
       </fieldset>
       <label>
         Good class
-        <input
-          type="text"
-          id="good_class_input"
-          list="class-options"
-          placeholder="Search and select class"
-          autocomplete="off"
-          value="{{ pending_good_class_label or '' }}"
-          required
-        />
+        <div class="class-select-wrap">
+          <button type="button" id="clear_good_class" class="clear-class-btn" aria-label="Clear good class">X</button>
+          <input
+            type="text"
+            id="good_class_input"
+            list="class-options"
+            placeholder="Search and select class"
+            autocomplete="off"
+            value="{{ pending_good_class_label or '' }}"
+            required
+          />
+        </div>
         <input
           type="hidden"
           id="good_class_id"
@@ -115,15 +118,18 @@
       </label>
       <label>
         Bad class
-        <input
-          type="text"
-          id="bad_class_input"
-          list="class-options"
-          placeholder="Search and select class"
-          autocomplete="off"
-          value="{{ pending_bad_class_label or '' }}"
-          required
-        />
+        <div class="class-select-wrap">
+          <button type="button" id="clear_bad_class" class="clear-class-btn" aria-label="Clear bad class">X</button>
+          <input
+            type="text"
+            id="bad_class_input"
+            list="class-options"
+            placeholder="Search and select class"
+            autocomplete="off"
+            value="{{ pending_bad_class_label or '' }}"
+            required
+          />
+        </div>
         <input
           type="hidden"
           id="bad_class_id"
@@ -135,7 +141,7 @@
       <datalist id="class-options">
         {% for class in classes %}
         <option
-          value="{{ class.class_name }} ({{ class.class_code }}) - {{ class.teacher_name }}"
+          value="{{ class.class_name }} ({{ class.teacher_name }})"
           data-id="{{ class.id }}"
         ></option>
         {% endfor %}
@@ -248,6 +254,8 @@
     const badInput = document.getElementById("bad_class_input");
     const goodHidden = document.getElementById("good_class_id");
     const badHidden = document.getElementById("bad_class_id");
+    const clearGoodButton = document.getElementById("clear_good_class");
+    const clearBadButton = document.getElementById("clear_bad_class");
     const studentInput = document.getElementById("student_name_input");
     const studentInfo = document.getElementById("student-autofill-note");
     const classOptions = Array.from(document.querySelectorAll("#class-options option"));
@@ -426,6 +434,12 @@
       refresh();
       forceDifferentSelection(badInput, badHidden, goodInput, goodHidden);
     };
+    const clearSelection = (input, hidden) => {
+      input.value = "";
+      hidden.value = "";
+      refresh();
+      input.focus();
+    };
 
     goodInput.addEventListener("input", onGoodChange);
     badInput.addEventListener("input", onBadChange);
@@ -433,6 +447,16 @@
     badInput.addEventListener("change", onBadChange);
     goodInput.addEventListener("blur", onGoodChange);
     badInput.addEventListener("blur", onBadChange);
+    if (clearGoodButton) {
+      clearGoodButton.addEventListener("click", () => {
+        clearSelection(goodInput, goodHidden);
+      });
+    }
+    if (clearBadButton) {
+      clearBadButton.addEventListener("click", () => {
+        clearSelection(badInput, badHidden);
+      });
+    }
     if (studentInput) {
       studentInput.addEventListener("input", scheduleStudentLookup);
       studentInput.addEventListener("change", () => {

@@ -94,20 +94,20 @@
           </label>
           <label>
             Good class
-            <select name="good_class_id" required>
+            <select name="good_class_id" class="class-choice-select" required>
               {% for class in classes %}
               <option value="{{ class.id }}" {% if pref.good_class_id == class.id %}selected{% endif %}>
-                {{ class.class_name }} ({{ class.class_code }})
+                {{ class.class_name }} ({{ class.teacher_name }})
               </option>
               {% endfor %}
             </select>
           </label>
           <label>
             Bad class
-            <select name="bad_class_id" required>
+            <select name="bad_class_id" class="class-choice-select" required>
               {% for class in classes %}
               <option value="{{ class.id }}" {% if pref.bad_class_id == class.id %}selected{% endif %}>
-                {{ class.class_name }} ({{ class.class_code }})
+                {{ class.class_name }} ({{ class.teacher_name }})
               </option>
               {% endfor %}
             </select>

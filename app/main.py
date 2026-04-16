@@ -53,6 +53,17 @@ def class_code_from_name(class_name: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:48]
 
 
+def short_class_code(class_code: str) -> str:
+    normalized_code = (class_code or "").strip()
+    if len(normalized_code) <= 8:
+        return normalized_code
+    return f"{normalized_code[:8]}..."
+
+
+def class_selection_label(class_row: Class) -> str:
+    return f"{class_row.class_name} ({class_row.teacher_name})"
+
+
 def ensure_preference_recorded_by_column() -> None:
     with engine.begin() as conn:
         conn.execute(
@@ -287,12 +298,12 @@ def preferences_page(
             "pending_bad_class_id": pending_bad_class_id,
             "initial_recorded_by": (pending_recorded_by or cookie_recorded_by),
             "pending_good_class_label": (
-                f"{class_by_id[pending_good_class_id].class_name} ({class_by_id[pending_good_class_id].class_code}) - {class_by_id[pending_good_class_id].teacher_name}"
+                class_selection_label(class_by_id[pending_good_class_id])
                 if pending_good_class_id in class_by_id
                 else None
             ),
             "pending_bad_class_label": (
-                f"{class_by_id[pending_bad_class_id].class_name} ({class_by_id[pending_bad_class_id].class_code}) - {class_by_id[pending_bad_class_id].teacher_name}"
+                class_selection_label(class_by_id[pending_bad_class_id])
                 if pending_bad_class_id in class_by_id
                 else None
             ),
