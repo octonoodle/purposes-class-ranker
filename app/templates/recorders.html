@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% set title = "Recorder Rankings | Class Ranker" %}
+
+{% block content %}
+<section class="panel">
+  <h2>Recorder Rankings</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>
+            <a class="sort-link" href="/recorders?sort=recorded_by&dir={{ 'desc' if sort_key == 'recorded_by' and sort_dir == 'asc' else 'asc' }}">
+              Recorded By {% if sort_key == 'recorded_by' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="sort-link" href="/recorders?sort=total_preferences&dir={{ 'desc' if sort_key == 'total_preferences' and sort_dir == 'asc' else 'asc' }}">
+              Total Preferences {% if sort_key == 'total_preferences' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="sort-link" href="/recorders?sort=unique_students&dir={{ 'desc' if sort_key == 'unique_students' and sort_dir == 'asc' else 'asc' }}">
+              Unique Students {% if sort_key == 'unique_students' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="sort-link" href="/recorders?sort=last_recorded_at&dir={{ 'desc' if sort_key == 'last_recorded_at' and sort_dir == 'asc' else 'asc' }}">
+              Last Recorded {% if sort_key == 'last_recorded_at' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+            </a>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in recorder_rankings %}
+        <tr>
+          <td data-label="Rank">{{ loop.index }}</td>
+          <td data-label="Recorded By">{{ row.recorded_by }}</td>
+          <td data-label="Total Preferences">{{ row.total_preferences }}</td>
+          <td data-label="Unique Students">{{ row.unique_students }}</td>
+          <td data-label="Last Recorded">{{ row.last_recorded_at or '-' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5">No preferences yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

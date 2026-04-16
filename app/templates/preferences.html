@@ -1,0 +1,456 @@
+{% extends "base.html" %}
+{% set title = "Preferences | Class Ranker" %}
+
+{% block content %}
+<div class="split">
+  <section class="panel">
+    <h2>Add Preference</h2>
+    {% if classes|length < 2 %}
+    <p>Add at least two classes first on the <a href="/classes">classes page</a>.</p>
+    {% else %}
+    {% if confirm_needed and pending_student_name and pending_good_class_id and pending_bad_class_id %}
+    <div class="confirm-box">
+      <p>
+        {{ pending_student_name }} already recorded the opposite preference for this class pair.
+        Confirm to overwrite that old preference.
+      </p>
+      <form method="post" action="/preferences" class="confirm-form">
+        <input type="hidden" name="recorded_by" value="{{ pending_recorded_by or initial_recorded_by }}" />
+        <input type="hidden" name="student_name" value="{{ pending_student_name }}" />
+        <input type="hidden" name="student_grade" value="{{ pending_student_grade }}" />
+        <input type="hidden" name="good_class_id" value="{{ pending_good_class_id }}" />
+        <input type="hidden" name="bad_class_id" value="{{ pending_bad_class_id }}" />
+        <input type="hidden" name="confirm_overwrite" value="true" />
+        <button type="submit">Confirm Overwrite</button>
+      </form>
+    </div>
+    {% endif %}
+    <form method="post" action="/preferences" class="grid-form compact-form" id="preference-form">
+      <label>
+        Recorded by
+        <input
+          type="text"
+          name="recorded_by"
+          required
+          maxlength="200"
+          value="{{ initial_recorded_by or '' }}"
+          placeholder="Your name"
+        />
+      </label>
+      <label>
+        Student name
+        <input
+          type="text"
+          id="student_name_input"
+          name="student_name"
+          list="student-options"
+          placeholder="Search and select student"
+          autocomplete="off"
+          required
+          maxlength="200"
+          value="{{ pending_student_name or '' }}"
+        />
+      </label>
+      <p class="form-info" id="student-autofill-note" aria-live="polite"></p>
+      <fieldset class="grade-picker">
+        <legend>Student grade</legend>
+        <div class="grade-options">
+          <label class="grade-option">
+            <input
+              type="radio"
+              name="student_grade"
+              value="9"
+              {% if pending_student_grade == 9 %}checked{% endif %}
+              required
+            />
+            <span>9</span>
+          </label>
+          <label class="grade-option">
+            <input
+              type="radio"
+              name="student_grade"
+              value="10"
+              {% if pending_student_grade == 10 %}checked{% endif %}
+            />
+            <span>10</span>
+          </label>
+          <label class="grade-option">
+            <input
+              type="radio"
+              name="student_grade"
+              value="11"
+              {% if pending_student_grade == 11 %}checked{% endif %}
+            />
+            <span>11</span>
+          </label>
+          <label class="grade-option">
+            <input
+              type="radio"
+              name="student_grade"
+              value="12"
+              {% if pending_student_grade == 12 %}checked{% endif %}
+            />
+            <span>12</span>
+          </label>
+        </div>
+      </fieldset>
+      <label>
+        Good class
+        <input
+          type="text"
+          id="good_class_input"
+          list="class-options"
+          placeholder="Search and select class"
+          autocomplete="off"
+          value="{{ pending_good_class_label or '' }}"
+          required
+        />
+        <input
+          type="hidden"
+          id="good_class_id"
+          name="good_class_id"
+          value="{{ pending_good_class_id if pending_good_class_id is not none else '' }}"
+          required
+        />
+      </label>
+      <label>
+        Bad class
+        <input
+          type="text"
+          id="bad_class_input"
+          list="class-options"
+          placeholder="Search and select class"
+          autocomplete="off"
+          value="{{ pending_bad_class_label or '' }}"
+          required
+        />
+        <input
+          type="hidden"
+          id="bad_class_id"
+          name="bad_class_id"
+          value="{{ pending_bad_class_id if pending_bad_class_id is not none else '' }}"
+          required
+        />
+      </label>
+      <datalist id="class-options">
+        {% for class in classes %}
+        <option
+          value="{{ class.class_name }} ({{ class.class_code }}) - {{ class.teacher_name }}"
+          data-id="{{ class.id }}"
+        ></option>
+        {% endfor %}
+      </datalist>
+      <p class="form-error" id="pair-error" aria-live="polite"></p>
+      <button type="submit" id="save-preference-btn">Save Preference</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Recent Preferences</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Recorded By</th>
+            <th>Student</th>
+            <th>Grade</th>
+            <th>Good Class</th>
+            <th>Bad Class</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pref, good_name, bad_name in recent_preferences %}
+          <tr>
+            <td data-label="Recorded By">{{ pref.recorded_by }}</td>
+            <td data-label="Student">{{ pref.student_name }}</td>
+            <td data-label="Grade">{{ pref.student_grade }}</td>
+            <td data-label="Good Class">{{ good_name }}</td>
+            <td data-label="Bad Class">{{ bad_name }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5">No preferences yet.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Find Student Preferences</h2>
+  <form method="get" action="/preferences" class="grid-form compact-form">
+    <label>
+      Student name
+      <input
+        type="text"
+        name="lookup_student_name"
+        list="student-options"
+        placeholder="Search and select student"
+        autocomplete="off"
+        value="{{ lookup_student_name or '' }}"
+      />
+    </label>
+    <datalist id="student-options">
+      {% for student_name in student_name_options %}
+      <option value="{{ student_name }}"></option>
+      {% endfor %}
+    </datalist>
+    <button type="submit">Search</button>
+  </form>
+
+  {% if lookup_student_name %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Recorded By</th>
+          <th>Student</th>
+          <th>Grade</th>
+          <th>Good Class</th>
+          <th>Bad Class</th>
+          <th>Recorded At</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pref, good_name, bad_name, good_code, bad_code in student_preferences %}
+        <tr>
+          <td data-label="Recorded By">{{ pref.recorded_by }}</td>
+          <td data-label="Student">{{ pref.student_name }}</td>
+          <td data-label="Grade">{{ pref.student_grade }}</td>
+          <td data-label="Good Class">{{ good_name }} ({{ good_code }})</td>
+          <td data-label="Bad Class">{{ bad_name }} ({{ bad_code }})</td>
+          <td data-label="Recorded At">{{ pref.created_at }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6">No preferences found for this student.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>Enter a student name to view all their recorded preferences.</p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const form = document.getElementById("preference-form");
+    if (!form) return;
+
+    const goodInput = document.getElementById("good_class_input");
+    const badInput = document.getElementById("bad_class_input");
+    const goodHidden = document.getElementById("good_class_id");
+    const badHidden = document.getElementById("bad_class_id");
+    const studentInput = document.getElementById("student_name_input");
+    const studentInfo = document.getElementById("student-autofill-note");
+    const classOptions = Array.from(document.querySelectorAll("#class-options option"));
+    const studentOptions = Array.from(document.querySelectorAll("#student-options option"));
+    const studentSet = new Set(studentOptions.map((option) => option.value.trim().toLowerCase()));
+    const errorText = document.getElementById("pair-error");
+    const submitButton = document.getElementById("save-preference-btn");
+    const gradeInputs = Array.from(form.querySelectorAll('input[name="student_grade"]'));
+
+    const normalize = (value) => value.trim().toLowerCase();
+    const valueToId = new Map();
+    const valueToLabel = new Map();
+    const idToLabel = new Map();
+    for (const option of classOptions) {
+      const key = normalize(option.value);
+      valueToId.set(key, option.dataset.id);
+      valueToLabel.set(key, option.value);
+      if (option.dataset.id) {
+        idToLabel.set(String(option.dataset.id), option.value);
+      }
+    }
+
+    const setStudentInfo = (text, isError = false) => {
+      if (!studentInfo) return;
+      studentInfo.textContent = text || "";
+      studentInfo.classList.toggle("error", isError);
+    };
+
+    const setGrade = (gradeValue) => {
+      const normalizedGrade = String(gradeValue);
+      for (const gradeInput of gradeInputs) {
+        if (gradeInput.value === normalizedGrade) {
+          gradeInput.checked = true;
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const setClassById = (input, hidden, classId) => {
+      const normalizedClassId = String(classId || "");
+      if (!normalizedClassId || !idToLabel.has(normalizedClassId)) return false;
+      hidden.value = normalizedClassId;
+      input.value = idToLabel.get(normalizedClassId);
+      return true;
+    };
+
+    let lookupRequestId = 0;
+    let lookupDebounce = null;
+    const lookupStudentData = async () => {
+      const requestId = ++lookupRequestId;
+      if (!studentInput) return;
+      const typedName = studentInput.value.trim();
+      if (!typedName) {
+        setStudentInfo("");
+        return;
+      }
+      if (!studentSet.has(normalize(typedName))) {
+        setStudentInfo("");
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/students/lookup?name=${encodeURIComponent(typedName)}`);
+        if (requestId !== lookupRequestId) return;
+        if (!response.ok) {
+          setStudentInfo("Unable to load student data.", true);
+          return;
+        }
+
+        const data = await response.json();
+        if (!data.found) {
+          setStudentInfo("");
+          return;
+        }
+
+        if (data.student_name) {
+          studentInput.value = data.student_name;
+        }
+
+        const latestPreference = data.latest_preference;
+        if (!latestPreference) {
+          setStudentInfo("Student found. No saved preference data yet.");
+          return;
+        }
+
+        setGrade(latestPreference.student_grade);
+        const goodLoaded = setClassById(goodInput, goodHidden, latestPreference.good_class_id);
+        const badLoaded = setClassById(badInput, badHidden, latestPreference.bad_class_id);
+        refresh();
+
+        const infoBits = [`Loaded grade ${latestPreference.student_grade}`];
+        if (goodLoaded && badLoaded) {
+          infoBits.push("loaded latest class pair");
+        }
+        if (latestPreference.recorded_by) {
+          infoBits.push(`last recorded by ${latestPreference.recorded_by}`);
+        }
+        setStudentInfo(infoBits.join(" | "));
+      } catch (_error) {
+        if (requestId !== lookupRequestId) return;
+        setStudentInfo("Unable to load student data.", true);
+      }
+    };
+
+    const scheduleStudentLookup = () => {
+      if (lookupDebounce !== null) {
+        window.clearTimeout(lookupDebounce);
+      }
+      lookupDebounce = window.setTimeout(() => {
+        lookupDebounce = null;
+        void lookupStudentData();
+      }, 120);
+    };
+
+    const syncDistinctSelection = () => {
+      if (!goodHidden.value && goodInput.value.trim()) {
+        errorText.textContent = "Pick a valid Good class from the suggestions.";
+        submitButton.disabled = true;
+        return;
+      }
+
+      if (!badHidden.value && badInput.value.trim()) {
+        errorText.textContent = "Pick a valid Bad class from the suggestions.";
+        submitButton.disabled = true;
+        return;
+      }
+
+      if (goodHidden.value && badHidden.value && goodHidden.value === badHidden.value) {
+        errorText.textContent = "Good class and bad class must be different.";
+        submitButton.disabled = true;
+      } else {
+        errorText.textContent = "";
+        submitButton.disabled = false;
+      }
+    };
+
+    const syncField = (input, hidden) => {
+      const key = normalize(input.value);
+      if (!key) {
+        hidden.value = "";
+        return;
+      }
+
+      if (valueToId.has(key)) {
+        hidden.value = valueToId.get(key);
+        input.value = valueToLabel.get(key);
+      } else {
+        hidden.value = "";
+      }
+    };
+
+    const refresh = () => {
+      syncField(goodInput, goodHidden);
+      syncField(badInput, badHidden);
+      syncDistinctSelection();
+    };
+
+    const forceDifferentSelection = (changedInput, changedHidden, otherInput, otherHidden) => {
+      if (!changedHidden.value || changedHidden.value !== otherHidden.value) return;
+      otherInput.value = "";
+      otherHidden.value = "";
+      if (changedInput === goodInput) {
+        errorText.textContent = "Bad class cleared because it matched Good class. Choose a different one.";
+      } else {
+        errorText.textContent = "Good class cleared because it matched Bad class. Choose a different one.";
+      }
+      syncDistinctSelection();
+    };
+
+    const onGoodChange = () => {
+      refresh();
+      forceDifferentSelection(goodInput, goodHidden, badInput, badHidden);
+    };
+    const onBadChange = () => {
+      refresh();
+      forceDifferentSelection(badInput, badHidden, goodInput, goodHidden);
+    };
+
+    goodInput.addEventListener("input", onGoodChange);
+    badInput.addEventListener("input", onBadChange);
+    goodInput.addEventListener("change", onGoodChange);
+    badInput.addEventListener("change", onBadChange);
+    goodInput.addEventListener("blur", onGoodChange);
+    badInput.addEventListener("blur", onBadChange);
+    if (studentInput) {
+      studentInput.addEventListener("input", scheduleStudentLookup);
+      studentInput.addEventListener("change", () => {
+        void lookupStudentData();
+      });
+      studentInput.addEventListener("blur", () => {
+        void lookupStudentData();
+      });
+    }
+
+    form.addEventListener("submit", (event) => {
+      refresh();
+      if (!goodHidden.value || !badHidden.value || submitButton.disabled) {
+        event.preventDefault();
+      }
+    });
+
+    refresh();
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% set title = "Rankings | Class Ranker" %}
+
+{% block content %}
+<section class="panel">
+  <h2>Class Rankings (Binary Comparison)</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>
+            <a class="sort-link" href="/rankings?sort=class&dir={{ 'desc' if sort_key == 'class' and sort_dir == 'asc' else 'asc' }}">
+              Class {% if sort_key == 'class' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="sort-link" href="/rankings?sort=id&dir={{ 'desc' if sort_key == 'id' and sort_dir == 'asc' else 'asc' }}">
+              ID (Hash) {% if sort_key == 'id' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="sort-link" href="/rankings?sort=teacher&dir={{ 'desc' if sort_key == 'teacher' and sort_dir == 'asc' else 'asc' }}">
+              Teacher {% if sort_key == 'teacher' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="sort-link" href="/rankings?sort=wins&dir={{ 'desc' if sort_key == 'wins' and sort_dir == 'asc' else 'asc' }}">
+              Wins {% if sort_key == 'wins' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="sort-link" href="/rankings?sort=losses&dir={{ 'desc' if sort_key == 'losses' and sort_dir == 'asc' else 'asc' }}">
+              Losses {% if sort_key == 'losses' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="sort-link" href="/rankings?sort=net_score&dir={{ 'desc' if sort_key == 'net_score' and sort_dir == 'asc' else 'asc' }}">
+              Net {% if sort_key == 'net_score' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+            </a>
+          </th>
+          <th>
+            <a class="sort-link" href="/rankings?sort=win_rate&dir={{ 'desc' if sort_key == 'win_rate' and sort_dir == 'asc' else 'asc' }}">
+              Win Rate {% if sort_key == 'win_rate' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+            </a>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for class, wins, losses, net_score, win_rate in rankings %}
+        <tr>
+          <td data-label="Rank">{{ loop.index }}</td>
+          <td data-label="Class">{{ class.class_name }}</td>
+          <td data-label="ID (Hash)">{{ class.class_code }}</td>
+          <td data-label="Teacher">{{ class.teacher_name }}</td>
+          <td data-label="Wins">{{ wins }}</td>
+          <td data-label="Losses">{{ losses }}</td>
+          <td data-label="Net">{{ net_score }}</td>
+          <td data-label="Win Rate">{{ "%.1f"|format(win_rate * 100) }}%</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8">No classes yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% set title = "Classes | Class Ranker" %}
+
+{% block content %}
+<div class="split">
+  <section class="panel">
+    <h2>Add Class</h2>
+    <form method="post" action="/classes" class="grid-form compact-form">
+      <label>
+        Class name
+        <input type="text" name="class_name" required maxlength="200" placeholder="Algebra 1" />
+      </label>
+      <label>
+        Teacher name
+        <input type="text" name="teacher_name" required maxlength="200" placeholder="Ms. Rivera" />
+      </label>
+      <label>
+        Required grade (0 if not required)
+        <input type="number" name="required_grade" required min="0" max="12" value="0" />
+      </label>
+      <p class="form-info">Class ID is auto-generated as a hash of class name.</p>
+      <button type="submit">Save Class</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Classes</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID (Hash)</th>
+            <th>Name</th>
+            <th>Teacher</th>
+            <th>Required Grade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for class in classes %}
+          <tr>
+            <td data-label="ID (Hash)">{{ class.class_code }}</td>
+            <td data-label="Name">{{ class.class_name }}</td>
+            <td data-label="Teacher">{{ class.teacher_name }}</td>
+            <td data-label="Required Grade">{{ class.required_grade }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="4">No classes yet.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
