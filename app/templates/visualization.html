@@ -5,8 +5,8 @@
 <section class="panel viz-page">
   <h2>3D Binary Comparison Map</h2>
   <p class="viz-intro">
-    Nodes are classes. Lines connect classes that were compared directly. Color and motion direction represent who
-    tends to win each pair.
+    Pick a class, then read the graph from that class's perspective.
+    Green means the selected class is preferred over that class, red means it is less preferred.
   </p>
   <div class="viz-layout">
     <div class="viz-canvas-shell">
@@ -44,9 +44,10 @@
         <p class="viz-details-line">No class selected.</p>
       </div>
       <div class="viz-legend">
-        <p><span class="swatch swatch-win"></span> dominant winner path</p>
-        <p><span class="swatch swatch-even"></span> split / balanced pair</p>
-        <p><span class="swatch swatch-contested"></span> contested pair</p>
+        <p><span class="swatch swatch-stronger"></span> selected class preferred over these</p>
+        <p><span class="swatch swatch-weaker"></span> selected class less preferred than these</p>
+        <p><span class="swatch swatch-even"></span> tied or balanced pair</p>
+        <p><span class="swatch swatch-uncompared"></span> no direct comparison with selected</p>
       </div>
     </aside>
   </div>
@@ -86,13 +87,65 @@
     const nodeById = new Map();
     const maxEdgeWeight = edges.reduce((maxSoFar, edge) => Math.max(maxSoFar, edge.total || 0), 1);
     const maxNodeVolume = nodes.reduce((maxSoFar, node) => Math.max(maxSoFar, node.total || 0), 1);
+    const relationColors = {
+      selected: [245, 220, 150, 245],
+      stronger: [120, 210, 145, 240],
+      weaker: [240, 110, 110, 240],
+      tied: [130, 140, 160, 220],
+      unrelated: [86, 96, 110, 135],
+    };
 
     function colorFromId(p, id) {
       const hue = (Number(id) * 37) % 360;
       return p.color(`hsl(${hue}, 75%, 62%)`);
     }
 
-    function setDetails(node) {
+    function selectedComparisonView(selectedId) {
+      const byOtherId = new Map();
+      let preferredOver = 0;
+      let lessPreferredThan = 0;
+      let tied = 0;
+      let compared = 0;
+
+      for (const edge of edges) {
+        let otherId = null;
+        let selectedWins = 0;
+        let otherWins = 0;
+        if (edge.a_id === selectedId) {
+          otherId = edge.b_id;
+          selectedWins = Number(edge.a_wins || 0);
+          otherWins = Number(edge.b_wins || 0);
+        } else if (edge.b_id === selectedId) {
+          otherId = edge.a_id;
+          selectedWins = Number(edge.b_wins || 0);
+          otherWins = Number(edge.a_wins || 0);
+        } else {
+          continue;
+        }
+
+        compared += 1;
+        let relation = "tied";
+        if (selectedWins > otherWins) {
+          relation = "stronger";
+          preferredOver += 1;
+        } else if (selectedWins < otherWins) {
+          relation = "weaker";
+          lessPreferredThan += 1;
+        } else {
+          tied += 1;
+        }
+        byOtherId.set(otherId, {
+          relation,
+          selectedWins,
+          otherWins,
+          total: Number(edge.total || 0),
+        });
+      }
+
+      return { byOtherId, preferredOver, lessPreferredThan, tied, compared };
+    }
+
+    function setDetails(node, selectedView = null) {
       if (!detailsEl) return;
       if (!node) {
         detailsEl.innerHTML = `
@@ -107,6 +160,9 @@
         <p class="viz-details-line">Wins: ${node.data.wins}</p>
         <p class="viz-details-line">Losses: ${node.data.losses}</p>
         <p class="viz-details-line">Net: ${node.data.net >= 0 ? "+" : ""}${node.data.net}</p>
+        <p class="viz-details-line">Preferred over: ${selectedView ? selectedView.preferredOver : 0}</p>
+        <p class="viz-details-line">Less preferred than: ${selectedView ? selectedView.lessPreferredThan : 0}</p>
+        <p class="viz-details-line">Tied pairs: ${selectedView ? selectedView.tied : 0}</p>
       `;
     }
 
@@ -118,6 +174,21 @@
       const preparedNodes = [];
       let selectedNodeId = null;
       let autoRotationAngle = 0;
+
+      const safeNodeMax = Math.max(1, maxNodeVolume);
+      const safeEdgeMax = Math.max(1, maxEdgeWeight);
+      const nodeScaleMax = Math.sqrt(safeNodeMax);
+      const edgeScaleMax = Math.sqrt(safeEdgeMax);
+
+      function nodeRadiusFromPreferences(preferenceCount) {
+        const scaledCount = Math.sqrt(Math.max(0, Number(preferenceCount) || 0));
+        return p.map(scaledCount, 0, nodeScaleMax, 8, 36);
+      }
+
+      function edgeThicknessFromPreferences(preferenceCount) {
+        const scaledCount = Math.sqrt(Math.max(0, Number(preferenceCount) || 0));
+        return p.map(scaledCount, 0, edgeScaleMax, 1.1, 8.2);
+      }
 
       if (nodeSelectEl) {
         const sortedNodes = [...nodes].sort((a, b) => a.name.localeCompare(b.name));
@@ -146,7 +217,7 @@
           const x = shellRadius * Math.sin(inclination) * Math.cos(azimuth);
           const y = shellRadius * Math.sin(inclination) * Math.sin(azimuth);
           const z = shellRadius * Math.cos(inclination);
-          const radius = p.map((nodeData.total || 0) + 1, 1, maxNodeVolume + 1, 7, 23);
+          const radius = nodeRadiusFromPreferences(nodeData.total || 0);
           const prepared = {
             data: nodeData,
             radius,
@@ -191,6 +262,7 @@
           autoRotationAngle += 0.0022;
         }
         p.rotateY(autoRotationAngle);
+        const selectedView = selectedNodeId !== null ? selectedComparisonView(selectedNodeId) : null;
 
         p.ambientLight(70, 70, 88);
         p.directionalLight(180, 180, 205, 0.2, 0.6, -1);
@@ -202,25 +274,32 @@
           if (!nodeA || !nodeB) continue;
 
           const edgeWeight = edge.total || 1;
-          const edgeThickness = p.map(edgeWeight, 1, maxEdgeWeight, 0.8, 4.6);
-          const imbalance = Number(edge.imbalance || 0);
-          const edgeAlpha = p.map(imbalance, 0, 1, 90, 255);
+          const edgeThickness = edgeThicknessFromPreferences(edgeWeight);
+          let strokeColor = p.color(...relationColors.unrelated);
+          let strokeWeight = edgeThickness;
 
-          let strokeColor = p.color(130, 140, 160, edgeAlpha);
-          if (edge.winner_id && edge.loser_id) {
-            strokeColor = imbalance < 0.35
-              ? p.color(230, 150, 100, edgeAlpha)
-              : p.color(120, 210, 145, edgeAlpha);
+          const selectedAgainstA = selectedView ? selectedView.byOtherId.get(edge.a_id) : null;
+          const selectedAgainstB = selectedView ? selectedView.byOtherId.get(edge.b_id) : null;
+          const selectedRelation = selectedAgainstA || selectedAgainstB;
+          if (selectedRelation) {
+            if (selectedRelation.relation === "stronger") {
+              strokeColor = p.color(...relationColors.stronger);
+            } else if (selectedRelation.relation === "weaker") {
+              strokeColor = p.color(...relationColors.weaker);
+            } else {
+              strokeColor = p.color(...relationColors.tied);
+            }
+            strokeWeight = edgeThickness;
           }
 
           p.stroke(strokeColor);
-          p.strokeWeight(edgeThickness);
+          p.strokeWeight(strokeWeight);
           p.line(
             nodeA.position.x, nodeA.position.y, nodeA.position.z,
             nodeB.position.x, nodeB.position.y, nodeB.position.z
           );
 
-          if (edge.winner_id && edge.loser_id) {
+          if (selectedRelation && edge.winner_id && edge.loser_id) {
             const winnerNode = nodeById.get(edge.winner_id);
             const loserNode = nodeById.get(edge.loser_id);
             if (winnerNode && loserNode) {
@@ -244,11 +323,26 @@
           const nodeX = node.position.x;
           const nodeY = node.position.y + bob;
           const nodeZ = node.position.z;
+          const relation = selectedView ? selectedView.byOtherId.get(node.data.id) : null;
+          let nodeColor = node.fillColor;
+          if (selectedNodeId === node.data.id) {
+            nodeColor = p.color(...relationColors.selected);
+          } else if (relation) {
+            if (relation.relation === "stronger") {
+              nodeColor = p.color(...relationColors.stronger);
+            } else if (relation.relation === "weaker") {
+              nodeColor = p.color(...relationColors.weaker);
+            } else {
+              nodeColor = p.color(...relationColors.tied);
+            }
+          } else {
+            nodeColor = p.color(...relationColors.unrelated);
+          }
 
           p.push();
           p.translate(nodeX, nodeY, nodeZ);
           p.noStroke();
-          p.fill(node.fillColor);
+          p.fill(nodeColor);
           p.sphere(node.radius, 18, 12);
           p.pop();
         }
@@ -258,13 +352,13 @@
           p.push();
           p.translate(selectedNode.position.x, selectedNode.position.y, selectedNode.position.z);
           p.noFill();
-          p.stroke(245, 220, 150, 220);
+          p.stroke(...relationColors.selected);
           p.strokeWeight(1.4);
           p.sphere(selectedNode.radius + 4.8, 14, 10);
           p.pop();
         }
 
-        setDetails(selectedNode || null);
+        setDetails(selectedNode || null, selectedView);
       };
     };
 

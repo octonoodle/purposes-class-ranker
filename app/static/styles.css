@@ -665,16 +665,20 @@ tbody tr:nth-child(2n) {
   display: inline-block;
 }
 
-.swatch-win {
+.swatch-stronger {
   background: #78d291;
+}
+
+.swatch-weaker {
+  background: #f06e6e;
 }
 
 .swatch-even {
   background: #8390a3;
 }
 
-.swatch-contested {
-  background: #e59a64;
+.swatch-uncompared {
+  background: #56606e;
 }
 
 @media (max-width: 940px) {
