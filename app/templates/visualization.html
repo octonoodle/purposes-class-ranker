@@ -11,6 +11,7 @@
   <div class="viz-layout">
     <div class="viz-canvas-shell">
       <div id="comparison-viz-canvas" class="viz-canvas"></div>
+      <div id="viz-hover-label" class="viz-hover-label" hidden></div>
       <div class="viz-canvas-help">
         Drag to orbit, scroll to zoom, right-drag to pan.
         <button type="button" id="toggle-autorotate">Pause Auto-Rotate</button>
@@ -69,6 +70,7 @@
     const coverageEl = document.getElementById("viz-coverage");
     const detailsEl = document.getElementById("viz-details");
     const nodeSelectEl = document.getElementById("viz-node-select");
+    const hoverLabelEl = document.getElementById("viz-hover-label");
     const autoRotateButton = document.getElementById("toggle-autorotate");
 
     if (classesEl) classesEl.textContent = String(stats.total_classes || 0);
@@ -91,7 +93,7 @@
       selected: [245, 220, 150, 245],
       stronger: [120, 210, 145, 240],
       weaker: [240, 110, 110, 240],
-      tied: [130, 140, 160, 220],
+      tied: [88, 183, 255, 230],
       unrelated: [86, 96, 110, 135],
     };
 
@@ -166,6 +168,14 @@
       `;
     }
 
+    function encodePickId(pickId) {
+      return [pickId & 255, (pickId >> 8) & 255, (pickId >> 16) & 255];
+    }
+
+    function decodePickId(r, g, b) {
+      return r + (g << 8) + (b << 16);
+    }
+
     const container = document.getElementById("comparison-viz-canvas");
     if (!container) return;
 
@@ -174,6 +184,9 @@
       const preparedNodes = [];
       let selectedNodeId = null;
       let autoRotationAngle = 0;
+      let hoveredNodeId = null;
+      const pickIdToNode = new Map();
+      const pickPixel = new Uint8Array(4);
 
       const safeNodeMax = Math.max(1, maxNodeVolume);
       const safeEdgeMax = Math.max(1, maxEdgeWeight);
@@ -207,6 +220,7 @@
       function rebuildNodeLayout() {
         preparedNodes.length = 0;
         nodeById.clear();
+        pickIdToNode.clear();
         const count = nodes.length;
         const shellRadius = Math.max(180, Math.min(container.clientWidth, 760) * 0.28);
         for (let i = 0; i < count; i += 1) {
@@ -218,17 +232,23 @@
           const y = shellRadius * Math.sin(inclination) * Math.sin(azimuth);
           const z = shellRadius * Math.cos(inclination);
           const radius = nodeRadiusFromPreferences(nodeData.total || 0);
+          const pickId = i + 1;
           const prepared = {
             data: nodeData,
             radius,
             position: p.createVector(x, y, z),
             phase: p.random(0, Math.PI * 2),
+            pickId,
             screenX: 0,
             screenY: 0,
+            renderX: x,
+            renderY: y,
+            renderZ: z,
             fillColor: colorFromId(p, nodeData.id),
           };
           preparedNodes.push(prepared);
           nodeById.set(nodeData.id, prepared);
+          pickIdToNode.set(pickId, prepared);
         }
 
         if (selectedNodeId === null && preparedNodes.length > 0) {
@@ -237,6 +257,65 @@
             nodeSelectEl.value = String(selectedNodeId);
           }
         }
+      }
+
+      function updateNodeAnimation() {
+        for (const node of preparedNodes) {
+          const bob = Math.sin(p.frameCount * 0.022 + node.phase) * 3.8;
+          node.renderX = node.position.x;
+          node.renderY = node.position.y + bob;
+          node.renderZ = node.position.z;
+        }
+      }
+
+      function updateHoveredNodeFromPickPass() {
+        if (p.mouseX < 0 || p.mouseX >= p.width || p.mouseY < 0 || p.mouseY >= p.height) {
+          hoveredNodeId = null;
+          return;
+        }
+        const gl = p?._renderer?.GL;
+        if (!gl) {
+          hoveredNodeId = null;
+          return;
+        }
+        const density = p.pixelDensity();
+        const px = Math.floor(p.mouseX * density);
+        const py = Math.floor((p.height - p.mouseY) * density);
+        gl.readPixels(px, py, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pickPixel);
+        const pickId = decodePickId(pickPixel[0], pickPixel[1], pickPixel[2]);
+        hoveredNodeId = pickIdToNode.has(pickId) ? pickId : null;
+      }
+
+      function drawPickPass() {
+        p.background(0);
+        p.noLights();
+        p.noStroke();
+        p.push();
+        p.rotateY(autoRotationAngle);
+        for (const node of preparedNodes) {
+          const [r, g, b] = encodePickId(node.pickId);
+          p.fill(r, g, b, 255);
+          p.push();
+          p.translate(node.renderX, node.renderY, node.renderZ);
+          p.sphere(node.radius, 14, 10);
+          p.pop();
+        }
+        p.pop();
+        updateHoveredNodeFromPickPass();
+      }
+
+      function updateHoverLabel(node) {
+        if (!hoverLabelEl) return;
+        if (!node) {
+          hoverLabelEl.hidden = true;
+          return;
+        }
+        const x = Math.max(10, Math.min(p.width - 10, p.mouseX + 14));
+        const y = Math.max(10, Math.min(p.height - 10, p.mouseY + 14));
+        hoverLabelEl.textContent = node.data.name;
+        hoverLabelEl.style.left = `${x}px`;
+        hoverLabelEl.style.top = `${y}px`;
+        hoverLabelEl.hidden = false;
       }
 
       p.setup = () => {
@@ -256,11 +335,13 @@
       };
 
       p.draw = () => {
-        p.background(16, 20, 24);
         p.orbitControl(1.0, 1.0, 0.2);
         if (autoRotate && !p.mouseIsPressed) {
           autoRotationAngle += 0.0022;
         }
+        updateNodeAnimation();
+        drawPickPass();
+        p.background(16, 20, 24);
         p.rotateY(autoRotationAngle);
         const selectedView = selectedNodeId !== null ? selectedComparisonView(selectedNodeId) : null;
 
@@ -278,9 +359,14 @@
           let strokeColor = p.color(...relationColors.unrelated);
           let strokeWeight = edgeThickness;
 
-          const selectedAgainstA = selectedView ? selectedView.byOtherId.get(edge.a_id) : null;
-          const selectedAgainstB = selectedView ? selectedView.byOtherId.get(edge.b_id) : null;
-          const selectedRelation = selectedAgainstA || selectedAgainstB;
+          let selectedRelation = null;
+          if (selectedView && selectedNodeId !== null) {
+            if (edge.a_id === selectedNodeId) {
+              selectedRelation = selectedView.byOtherId.get(edge.b_id) || null;
+            } else if (edge.b_id === selectedNodeId) {
+              selectedRelation = selectedView.byOtherId.get(edge.a_id) || null;
+            }
+          }
           if (selectedRelation) {
             if (selectedRelation.relation === "stronger") {
               strokeColor = p.color(...relationColors.stronger);
@@ -319,10 +405,9 @@
         }
 
         for (const node of preparedNodes) {
-          const bob = Math.sin(p.frameCount * 0.022 + node.phase) * 3.8;
-          const nodeX = node.position.x;
-          const nodeY = node.position.y + bob;
-          const nodeZ = node.position.z;
+          const nodeX = node.renderX;
+          const nodeY = node.renderY;
+          const nodeZ = node.renderZ;
           const relation = selectedView ? selectedView.byOtherId.get(node.data.id) : null;
           let nodeColor = node.fillColor;
           if (selectedNodeId === node.data.id) {
@@ -347,10 +432,11 @@
           p.pop();
         }
 
+        const hoveredNode = hoveredNodeId !== null ? pickIdToNode.get(hoveredNodeId) : null;
         const selectedNode = selectedNodeId !== null ? nodeById.get(selectedNodeId) : null;
         if (selectedNode) {
           p.push();
-          p.translate(selectedNode.position.x, selectedNode.position.y, selectedNode.position.z);
+          p.translate(selectedNode.renderX, selectedNode.renderY, selectedNode.renderZ);
           p.noFill();
           p.stroke(...relationColors.selected);
           p.strokeWeight(1.4);
@@ -358,6 +444,17 @@
           p.pop();
         }
 
+        if (hoveredNode && (!selectedNode || hoveredNode.data.id !== selectedNode.data.id)) {
+          p.push();
+          p.translate(hoveredNode.renderX, hoveredNode.renderY, hoveredNode.renderZ);
+          p.noFill();
+          p.stroke(255, 255, 255, 220);
+          p.strokeWeight(1.1);
+          p.sphere(hoveredNode.radius + 3.2, 12, 9);
+          p.pop();
+        }
+
+        updateHoverLabel(hoveredNode || null);
         setDetails(selectedNode || null, selectedView);
       };
     };

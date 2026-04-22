@@ -555,6 +555,7 @@ tbody tr:nth-child(2n) {
 }
 
 .viz-canvas-shell {
+  position: relative;
   border: 1px solid var(--bg2);
   border-radius: 12px;
   overflow: hidden;
@@ -573,6 +574,24 @@ tbody tr:nth-child(2n) {
   display: block;
   width: 100% !important;
   height: auto !important;
+}
+
+.viz-hover-label {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  transform: translate(-50%, -125%);
+  max-width: min(320px, 70vw);
+  padding: 0.26rem 0.5rem;
+  border: 1px solid rgba(235, 219, 178, 0.42);
+  border-radius: 7px;
+  background: rgba(20, 24, 28, 0.94);
+  color: #fbf1c7;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .viz-canvas-help {
@@ -674,7 +693,7 @@ tbody tr:nth-child(2n) {
 }
 
 .swatch-even {
-  background: #8390a3;
+  background: #58b7ff;
 }
 
 .swatch-uncompared {
