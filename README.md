@@ -56,7 +56,9 @@ uvicorn app.main:app
 6. Open:
 - http://127.0.0.1:8000/preferences
 - http://127.0.0.1:8000/classes
-- http://127.0.0.1:8000/edit
+- http://127.0.0.1:8000/edit/classes
+- http://127.0.0.1:8000/edit/preferences
+- http://127.0.0.1:8000/edit/students
 - http://127.0.0.1:8000/rankings
 - http://127.0.0.1:8000/stats
 

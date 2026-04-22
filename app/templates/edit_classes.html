@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% set title = "Edit Classes | Class Ranker" %}
+
+{% block content %}
+<section class="panel edit-nav-panel">
+  <nav class="edit-nav">
+    <a href="/edit/classes" class="{% if edit_tab == 'classes' %}active{% endif %}">Classes</a>
+    <a href="/edit/preferences" class="{% if edit_tab == 'preferences' %}active{% endif %}">Preferences</a>
+    <a href="/edit/students" class="{% if edit_tab == 'students' %}active{% endif %}">By Student</a>
+  </nav>
+</section>
+
+<section class="panel">
+  <h2>Edit Classes</h2>
+  <div class="edit-pager">
+    <span>Sort classes</span>
+    <div class="pager-actions">
+      <a href="/edit/classes?sort=class_name&dir={{ 'desc' if sort_key == 'class_name' and sort_dir == 'asc' else 'asc' }}">
+        Name {% if sort_key == 'class_name' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+      </a>
+      <a href="/edit/classes?sort=teacher&dir={{ 'desc' if sort_key == 'teacher' and sort_dir == 'asc' else 'asc' }}">
+        Teacher {% if sort_key == 'teacher' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+      </a>
+      <a href="/edit/classes?sort=required_grade&dir={{ 'desc' if sort_key == 'required_grade' and sort_dir == 'asc' else 'asc' }}">
+        Grade {% if sort_key == 'required_grade' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+      </a>
+      <a href="/edit/classes?sort=class_id&dir={{ 'desc' if sort_key == 'class_id' and sort_dir == 'asc' else 'asc' }}">
+        ID {% if sort_key == 'class_id' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+      </a>
+    </div>
+  </div>
+  <div class="edit-list">
+    {% for class in classes %}
+    <form method="post" action="/edit/classes/{{ class.id }}" class="edit-card">
+      <input type="hidden" name="sort" value="{{ sort_key }}" />
+      <input type="hidden" name="dir" value="{{ sort_dir }}" />
+      <p class="edit-meta">Class ID {{ class.class_code }}</p>
+      <div class="edit-grid">
+        <label>
+          Class ID (hash)
+          <input type="text" value="{{ class.class_code }}" readonly />
+        </label>
+        <label>
+          Class name
+          <input type="text" name="class_name" required maxlength="200" value="{{ class.class_name }}" />
+        </label>
+        <label>
+          Teacher name
+          <input type="text" name="teacher_name" required maxlength="200" value="{{ class.teacher_name }}" />
+        </label>
+        <label>
+          Required grade
+          <input type="number" name="required_grade" required min="0" max="12" value="{{ class.required_grade }}" />
+        </label>
+      </div>
+      <div class="card-actions">
+        <button type="submit" name="action" value="update">Save</button>
+        <button
+          type="submit"
+          name="action"
+          value="delete"
+          class="danger"
+          formnovalidate
+          onclick="return confirm('Delete this class? This will fail if preferences still reference it.')"
+        >
+          Delete
+        </button>
+      </div>
+    </form>
+    {% else %}
+    <p>No classes to edit.</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

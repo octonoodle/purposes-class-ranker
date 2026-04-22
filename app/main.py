@@ -489,14 +489,56 @@ def create_preference(
 
 
 @app.get("/edit")
-def edit_page(
+def edit_page_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/edit/classes", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/edit/classes")
+def edit_classes_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    message: str | None = None,
+    sort: str = "class_name",
+    dir: str = "asc",
+) -> Any:
+    sort_dir = "asc" if dir == "asc" else "desc"
+    class_sort_columns = {
+        "class_name": Class.class_name,
+        "class_id": Class.class_code,
+        "teacher": Class.teacher_name,
+        "required_grade": Class.required_grade,
+    }
+    sort_key = sort if sort in class_sort_columns else "class_name"
+    sort_expr = class_sort_columns[sort_key]
+    primary_order = sort_expr.asc() if sort_dir == "asc" else sort_expr.desc()
+    classes = db.execute(
+        select(Class).order_by(primary_order, Class.class_name.asc(), Class.class_code.asc())
+    ).scalars().all()
+    return templates.TemplateResponse(
+        request=request,
+        name="edit_classes.html",
+        context={
+            "classes": classes,
+            "message": message,
+            "edit_tab": "classes",
+            "sort_key": sort_key,
+            "sort_dir": sort_dir,
+        },
+    )
+
+
+@app.get("/edit/preferences")
+def edit_preferences_page(
     request: Request,
     db: Session = Depends(get_db),
     message: str | None = None,
     pref_page: int = 1,
+    sort: str = "created_at",
+    dir: str = "desc",
 ) -> Any:
     page_size = 5
     safe_pref_page = pref_page if pref_page > 0 else 1
+    sort_dir = "asc" if dir == "asc" else "desc"
     classes = db.execute(select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())).scalars().all()
     student_name_options = get_student_name_options(db)
     total_preferences = db.execute(select(func.count(Preference.id))).scalar_one()
@@ -504,15 +546,29 @@ def edit_page(
     if safe_pref_page > total_pref_pages:
         safe_pref_page = total_pref_pages
     offset = (safe_pref_page - 1) * page_size
+    good_sort_cls = aliased(Class)
+    bad_sort_cls = aliased(Class)
+    preference_sort_columns = {
+        "created_at": Preference.created_at,
+        "student_name": Preference.student_name,
+        "good_class": good_sort_cls.class_name,
+        "bad_class": bad_sort_cls.class_name,
+    }
+    sort_key = sort if sort in preference_sort_columns else "created_at"
+    sort_expr = preference_sort_columns[sort_key]
+    primary_order = sort_expr.asc() if sort_dir == "asc" else sort_expr.desc()
     preferences = db.execute(
-        select(Preference).order_by(Preference.created_at.desc(), Preference.id.desc())
+        select(Preference)
+        .join(good_sort_cls, good_sort_cls.id == Preference.good_class_id)
+        .join(bad_sort_cls, bad_sort_cls.id == Preference.bad_class_id)
+        .order_by(primary_order, Preference.created_at.desc(), Preference.id.desc())
         .limit(page_size)
         .offset(offset)
     ).scalars().all()
 
     return templates.TemplateResponse(
         request=request,
-        name="edit.html",
+        name="edit_preferences.html",
         context={
             "classes": classes,
             "preferences": preferences,
@@ -524,6 +580,58 @@ def edit_page(
             "has_older": safe_pref_page < total_pref_pages,
             "newer_page": safe_pref_page - 1,
             "older_page": safe_pref_page + 1,
+            "edit_tab": "preferences",
+            "sort_key": sort_key,
+            "sort_dir": sort_dir,
+        },
+    )
+
+
+@app.get("/edit/students")
+def edit_preferences_by_student_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    message: str | None = None,
+    lookup_student_name: str | None = None,
+    sort: str = "created_at",
+    dir: str = "desc",
+) -> Any:
+    classes = db.execute(select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())).scalars().all()
+    student_name_options = get_student_name_options(db)
+    normalized_lookup_student_name = (lookup_student_name or "").strip()
+    sort_dir = "asc" if dir == "asc" else "desc"
+    good_sort_cls = aliased(Class)
+    bad_sort_cls = aliased(Class)
+    preference_sort_columns = {
+        "created_at": Preference.created_at,
+        "good_class": good_sort_cls.class_name,
+        "bad_class": bad_sort_cls.class_name,
+    }
+    sort_key = sort if sort in preference_sort_columns else "created_at"
+    sort_expr = preference_sort_columns[sort_key]
+    primary_order = sort_expr.asc() if sort_dir == "asc" else sort_expr.desc()
+    preferences = []
+    if normalized_lookup_student_name:
+        preferences = db.execute(
+            select(Preference)
+            .join(good_sort_cls, good_sort_cls.id == Preference.good_class_id)
+            .join(bad_sort_cls, bad_sort_cls.id == Preference.bad_class_id)
+            .where(func.lower(Preference.student_name) == normalized_lookup_student_name.lower())
+            .order_by(primary_order, Preference.created_at.desc(), Preference.id.desc())
+        ).scalars().all()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="edit_students.html",
+        context={
+            "classes": classes,
+            "preferences": preferences,
+            "student_name_options": student_name_options,
+            "lookup_student_name": normalized_lookup_student_name,
+            "message": message,
+            "edit_tab": "students",
+            "sort_key": sort_key,
+            "sort_dir": sort_dir,
         },
     )
 
@@ -535,10 +643,11 @@ def edit_class_record(
     class_name: str = Form(""),
     teacher_name: str = Form(""),
     required_grade: int = Form(0),
-    pref_page: int = Form(1),
+    sort: str = Form("class_name"),
+    dir: str = Form("asc"),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    page_param = {"pref_page": pref_page if pref_page > 0 else 1}
+    redirect_params: dict[str, int | str] = {"sort": sort, "dir": dir}
     try:
         with db.begin():
             class_row = db.execute(
@@ -553,28 +662,28 @@ def edit_class_record(
                 normalized_name = class_name.strip()
                 normalized_teacher = teacher_name.strip()
                 if not normalized_name or not normalized_teacher:
-                    return redirect_with_message("/edit", "Class fields cannot be empty", page_param)
+                    return redirect_with_message("/edit/classes", "Class fields cannot be empty", redirect_params)
                 if required_grade < 0 or required_grade > 12:
-                    return redirect_with_message("/edit", "Required grade must be between 0 and 12", page_param)
+                    return redirect_with_message("/edit/classes", "Required grade must be between 0 and 12", redirect_params)
 
                 class_row.class_code = class_code_from_name(normalized_name)
                 class_row.class_name = normalized_name
                 class_row.teacher_name = normalized_teacher
                 class_row.required_grade = required_grade
             else:
-                return redirect_with_message("/edit", "Invalid class action", page_param)
+                return redirect_with_message("/edit/classes", "Invalid class action", redirect_params)
     except HTTPException:
         db.rollback()
-        return redirect_with_message("/edit", "Class not found", page_param)
+        return redirect_with_message("/edit/classes", "Class not found", redirect_params)
     except IntegrityError:
         db.rollback()
         if action == "delete":
-            return redirect_with_message("/edit", "Cannot delete class while preferences reference it", page_param)
-        return redirect_with_message("/edit", "Could not update class (duplicate class name or invalid value)", page_param)
+            return redirect_with_message("/edit/classes", "Cannot delete class while preferences reference it", redirect_params)
+        return redirect_with_message("/edit/classes", "Could not update class (duplicate class name or invalid value)", redirect_params)
 
     if action == "delete":
-        return redirect_with_message("/edit", "Class deleted", page_param)
-    return redirect_with_message("/edit", "Class updated", page_param)
+        return redirect_with_message("/edit/classes", "Class deleted", redirect_params)
+    return redirect_with_message("/edit/classes", "Class updated", redirect_params)
 
 
 @app.post("/edit/preferences/{preference_id}")
@@ -587,9 +696,23 @@ def edit_preference_record(
     good_class_id: int = Form(0),
     bad_class_id: int = Form(0),
     pref_page: int = Form(1),
+    return_to: str = Form("preferences"),
+    lookup_student_name: str = Form(""),
+    sort: str = Form("created_at"),
+    dir: str = Form("desc"),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    page_param = {"pref_page": pref_page if pref_page > 0 else 1}
+    safe_pref_page = pref_page if pref_page > 0 else 1
+    normalized_lookup_student_name = lookup_student_name.strip()
+
+    redirect_path = "/edit/preferences"
+    redirect_params: dict[str, int | str] = {"pref_page": safe_pref_page, "sort": sort, "dir": dir}
+    if return_to == "students":
+        redirect_path = "/edit/students"
+        redirect_params = {"sort": sort, "dir": dir}
+        if normalized_lookup_student_name:
+            redirect_params["lookup_student_name"] = normalized_lookup_student_name
+
     try:
         with db.begin():
             preference_row = db.execute(
@@ -604,13 +727,13 @@ def edit_preference_record(
                 normalized_recorded_by = recorded_by.strip()
                 normalized_student_name = student_name.strip()
                 if not normalized_recorded_by:
-                    return redirect_with_message("/edit", "Recorder name is required", page_param)
+                    return redirect_with_message(redirect_path, "Recorder name is required", redirect_params)
                 if not normalized_student_name:
-                    return redirect_with_message("/edit", "Student name is required", page_param)
+                    return redirect_with_message(redirect_path, "Student name is required", redirect_params)
                 if student_grade < 9 or student_grade > 12:
-                    return redirect_with_message("/edit", "Student grade must be between 9 and 12", page_param)
+                    return redirect_with_message(redirect_path, "Student grade must be between 9 and 12", redirect_params)
                 if good_class_id == bad_class_id:
-                    return redirect_with_message("/edit", "Good and bad class must be different", page_param)
+                    return redirect_with_message(redirect_path, "Good and bad class must be different", redirect_params)
 
                 class_ids = db.execute(
                     select(Class.id)
@@ -618,7 +741,7 @@ def edit_preference_record(
                     .with_for_update(read=True)
                 ).scalars().all()
                 if len(set(class_ids)) != 2:
-                    return redirect_with_message("/edit", "Selected classes do not exist", page_param)
+                    return redirect_with_message(redirect_path, "Selected classes do not exist", redirect_params)
 
                 duplicate_preference = db.execute(
                     select(Preference.id)
@@ -630,7 +753,7 @@ def edit_preference_record(
                     .limit(1)
                 ).scalar_one_or_none()
                 if duplicate_preference is not None:
-                    return redirect_with_message("/edit", "Duplicate preference already exists for this student", page_param)
+                    return redirect_with_message(redirect_path, "Duplicate preference already exists for this student", redirect_params)
 
                 upsert_student_name(db, normalized_student_name)
                 preference_row.recorded_by = normalized_recorded_by
@@ -639,17 +762,17 @@ def edit_preference_record(
                 preference_row.good_class_id = good_class_id
                 preference_row.bad_class_id = bad_class_id
             else:
-                return redirect_with_message("/edit", "Invalid preference action", page_param)
+                return redirect_with_message(redirect_path, "Invalid preference action", redirect_params)
     except HTTPException:
         db.rollback()
-        return redirect_with_message("/edit", "Preference not found", page_param)
+        return redirect_with_message(redirect_path, "Preference not found", redirect_params)
     except IntegrityError:
         db.rollback()
-        return redirect_with_message("/edit", "Could not update preference", page_param)
+        return redirect_with_message(redirect_path, "Could not update preference", redirect_params)
 
     if action == "delete":
-        return redirect_with_message("/edit", "Preference deleted", page_param)
-    return redirect_with_message("/edit", "Preference updated", page_param)
+        return redirect_with_message(redirect_path, "Preference deleted", redirect_params)
+    return redirect_with_message(redirect_path, "Preference updated", redirect_params)
 
 
 @app.get("/recorders")

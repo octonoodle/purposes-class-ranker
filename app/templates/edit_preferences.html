@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% set title = "Edit Preferences | Class Ranker" %}
+
+{% block content %}
+<section class="panel edit-nav-panel">
+  <nav class="edit-nav">
+    <a href="/edit/classes" class="{% if edit_tab == 'classes' %}active{% endif %}">Classes</a>
+    <a href="/edit/preferences" class="{% if edit_tab == 'preferences' %}active{% endif %}">Preferences</a>
+    <a href="/edit/students" class="{% if edit_tab == 'students' %}active{% endif %}">By Student</a>
+  </nav>
+</section>
+
+<section class="panel">
+  <h2>Edit Preferences</h2>
+  <div class="edit-pager">
+    <span>Sort preferences</span>
+    <div class="pager-actions">
+      <a href="/edit/preferences?pref_page=1&sort=created_at&dir={{ 'desc' if sort_key == 'created_at' and sort_dir == 'asc' else 'asc' }}">
+        Recent {% if sort_key == 'created_at' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+      </a>
+      <a href="/edit/preferences?pref_page=1&sort=student_name&dir={{ 'desc' if sort_key == 'student_name' and sort_dir == 'asc' else 'asc' }}">
+        Student {% if sort_key == 'student_name' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+      </a>
+      <a href="/edit/preferences?pref_page=1&sort=good_class&dir={{ 'desc' if sort_key == 'good_class' and sort_dir == 'asc' else 'asc' }}">
+        Good Class {% if sort_key == 'good_class' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+      </a>
+      <a href="/edit/preferences?pref_page=1&sort=bad_class&dir={{ 'desc' if sort_key == 'bad_class' and sort_dir == 'asc' else 'asc' }}">
+        Bad Class {% if sort_key == 'bad_class' %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}
+      </a>
+    </div>
+  </div>
+  <div class="edit-pager">
+    <span>Showing page {{ pref_page }} of {{ total_pref_pages }}</span>
+    <div class="pager-actions">
+      {% if has_newer %}
+      <a href="/edit/preferences?pref_page={{ newer_page }}&sort={{ sort_key }}&dir={{ sort_dir }}">Newer</a>
+      {% endif %}
+      {% if has_older %}
+      <a href="/edit/preferences?pref_page={{ older_page }}&sort={{ sort_key }}&dir={{ sort_dir }}">Older</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="edit-list">
+    {% for pref in preferences %}
+    <form method="post" action="/edit/preferences/{{ pref.id }}" class="edit-card preference-form">
+      <input type="hidden" name="pref_page" value="{{ pref_page }}" />
+      <input type="hidden" name="return_to" value="preferences" />
+      <input type="hidden" name="sort" value="{{ sort_key }}" />
+      <input type="hidden" name="dir" value="{{ sort_dir }}" />
+      <p class="edit-meta">Preference #{{ pref.id }}</p>
+      <div class="edit-grid">
+        <label>
+          Recorded by
+          <input type="text" name="recorded_by" required maxlength="200" value="{{ pref.recorded_by }}" />
+        </label>
+        <label>
+          Student name
+          <input
+            type="text"
+            name="student_name"
+            list="student-options"
+            placeholder="Search and select student"
+            autocomplete="off"
+            required
+            maxlength="200"
+            value="{{ pref.student_name }}"
+          />
+        </label>
+        <label>
+          Grade
+          <select name="student_grade" required>
+            {% for grade in [9, 10, 11, 12] %}
+            <option value="{{ grade }}" {% if pref.student_grade == grade %}selected{% endif %}>{{ grade }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Good class
+          <select name="good_class_id" class="class-choice-select" required>
+            {% for class in classes %}
+            <option value="{{ class.id }}" {% if pref.good_class_id == class.id %}selected{% endif %}>
+              {{ class.class_name }} ({{ class.teacher_name }})
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Bad class
+          <select name="bad_class_id" class="class-choice-select" required>
+            {% for class in classes %}
+            <option value="{{ class.id }}" {% if pref.bad_class_id == class.id %}selected{% endif %}>
+              {{ class.class_name }} ({{ class.teacher_name }})
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="card-actions">
+        <button type="submit" name="action" value="update">Save</button>
+        <button
+          type="submit"
+          name="action"
+          value="delete"
+          class="danger"
+          formnovalidate
+          onclick="return confirm('Delete this preference?')"
+        >
+          Delete
+        </button>
+      </div>
+    </form>
+    {% else %}
+    <p>No preferences to edit.</p>
+    {% endfor %}
+  </div>
+  <datalist id="student-options">
+    {% for student_name in student_name_options %}
+    <option value="{{ student_name }}"></option>
+    {% endfor %}
+  </datalist>
+  <div class="edit-pager">
+    <span>Showing page {{ pref_page }} of {{ total_pref_pages }}</span>
+    <div class="pager-actions">
+      {% if has_newer %}
+      <a href="/edit/preferences?pref_page={{ newer_page }}&sort={{ sort_key }}&dir={{ sort_dir }}">Newer</a>
+      {% endif %}
+      {% if has_older %}
+      <a href="/edit/preferences?pref_page={{ older_page }}&sort={{ sort_key }}&dir={{ sort_dir }}">Older</a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    document.querySelectorAll(".preference-form").forEach((form) => {
+      form.addEventListener("submit", (event) => {
+        const submitter = event.submitter;
+        if (submitter && submitter.value === "delete") {
+          return;
+        }
+
+        const good = form.querySelector('select[name="good_class_id"]');
+        const bad = form.querySelector('select[name="bad_class_id"]');
+        if (good && bad && good.value === bad.value) {
+          event.preventDefault();
+          window.alert("Good class and bad class must be different.");
+        }
+      });
+    });
+  })();
+</script>
+{% endblock %}

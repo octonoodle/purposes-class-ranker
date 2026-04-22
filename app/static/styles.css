@@ -378,6 +378,39 @@ tbody tr:nth-child(2n) {
   gap: 0.9rem;
 }
 
+.edit-nav-panel {
+  padding: 0.62rem 0.7rem;
+}
+
+.edit-nav {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.edit-nav a {
+  text-decoration: none;
+  color: var(--fg-soft);
+  border: 1px solid var(--bg3);
+  border-radius: 999px;
+  padding: 0.3rem 0.62rem;
+  font-size: 0.82rem;
+  line-height: 1.1;
+  background: rgba(60, 56, 54, 0.55);
+}
+
+.edit-nav a:hover {
+  color: var(--yellow);
+  border-color: var(--yellow);
+}
+
+.edit-nav a.active {
+  color: #1d2021;
+  border-color: #d79921;
+  background: linear-gradient(180deg, #d79921, #b57614);
+  font-weight: 700;
+}
+
 .edit-list {
   display: grid;
   gap: 0.7rem;
@@ -553,6 +586,21 @@ tbody tr:nth-child(2n) {
     font-size: 0.72rem;
     padding: 0.24rem 0.44rem;
     min-height: 1.7rem;
+  }
+
+  .edit-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .edit-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .edit-nav a {
+    flex: 0 0 auto;
   }
 
   main {
