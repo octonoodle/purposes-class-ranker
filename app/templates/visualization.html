@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% set title = "3D Comparison Viz | Class Ranker" %}
+
+{% block content %}
+<section class="panel viz-page">
+  <h2>3D Binary Comparison Map</h2>
+  <p class="viz-intro">
+    Nodes are classes. Lines connect classes that were compared directly. Color and motion direction represent who
+    tends to win each pair.
+  </p>
+  <div class="viz-layout">
+    <div class="viz-canvas-shell">
+      <div id="comparison-viz-canvas" class="viz-canvas"></div>
+      <div class="viz-canvas-help">
+        Drag to orbit, scroll to zoom, right-drag to pan.
+        <button type="button" id="toggle-autorotate">Pause Auto-Rotate</button>
+      </div>
+    </div>
+    <aside class="viz-sidebar">
+      <div class="viz-metric">
+        <p class="viz-metric-label">Classes</p>
+        <p class="viz-metric-value" id="viz-classes">0</p>
+      </div>
+      <div class="viz-metric">
+        <p class="viz-metric-label">Preferences</p>
+        <p class="viz-metric-value" id="viz-preferences">0</p>
+      </div>
+      <div class="viz-metric">
+        <p class="viz-metric-label">Compared Pairs</p>
+        <p class="viz-metric-value" id="viz-pairs">0 / 0</p>
+      </div>
+      <div class="viz-metric">
+        <p class="viz-metric-label">Pair Coverage</p>
+        <p class="viz-metric-value" id="viz-coverage">0%</p>
+      </div>
+      <label>
+        Inspect class
+        <select id="viz-node-select">
+          <option value="">Select class</option>
+        </select>
+      </label>
+      <div class="viz-details" id="viz-details">
+        <p class="viz-details-title">Select a class to inspect.</p>
+        <p class="viz-details-line">No class selected.</p>
+      </div>
+      <div class="viz-legend">
+        <p><span class="swatch swatch-win"></span> dominant winner path</p>
+        <p><span class="swatch swatch-even"></span> split / balanced pair</p>
+        <p><span class="swatch swatch-contested"></span> contested pair</p>
+      </div>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+<script>
+  (() => {
+    const payload = {{ viz_payload | tojson }};
+    const stats = payload.stats || {};
+    const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
+    const edges = Array.isArray(payload.edges) ? payload.edges : [];
+
+    const classesEl = document.getElementById("viz-classes");
+    const preferencesEl = document.getElementById("viz-preferences");
+    const pairsEl = document.getElementById("viz-pairs");
+    const coverageEl = document.getElementById("viz-coverage");
+    const detailsEl = document.getElementById("viz-details");
+    const nodeSelectEl = document.getElementById("viz-node-select");
+    const autoRotateButton = document.getElementById("toggle-autorotate");
+
+    if (classesEl) classesEl.textContent = String(stats.total_classes || 0);
+    if (preferencesEl) preferencesEl.textContent = String(stats.total_preferences || 0);
+    if (pairsEl) pairsEl.textContent = `${stats.observed_pairs || 0} / ${stats.possible_pairs || 0}`;
+    if (coverageEl) coverageEl.textContent = `${((stats.pair_coverage || 0) * 100).toFixed(1)}%`;
+
+    let autoRotate = true;
+    if (autoRotateButton) {
+      autoRotateButton.addEventListener("click", () => {
+        autoRotate = !autoRotate;
+        autoRotateButton.textContent = autoRotate ? "Pause Auto-Rotate" : "Resume Auto-Rotate";
+      });
+    }
+
+    const nodeById = new Map();
+    const maxEdgeWeight = edges.reduce((maxSoFar, edge) => Math.max(maxSoFar, edge.total || 0), 1);
+    const maxNodeVolume = nodes.reduce((maxSoFar, node) => Math.max(maxSoFar, node.total || 0), 1);
+
+    function colorFromId(p, id) {
+      const hue = (Number(id) * 37) % 360;
+      return p.color(`hsl(${hue}, 75%, 62%)`);
+    }
+
+    function setDetails(node) {
+      if (!detailsEl) return;
+      if (!node) {
+        detailsEl.innerHTML = `
+          <p class="viz-details-title">Select a class to inspect.</p>
+          <p class="viz-details-line">No class selected.</p>
+        `;
+        return;
+      }
+      detailsEl.innerHTML = `
+        <p class="viz-details-title">${node.data.name}</p>
+        <p class="viz-details-line">Teacher: ${node.data.teacher}</p>
+        <p class="viz-details-line">Wins: ${node.data.wins}</p>
+        <p class="viz-details-line">Losses: ${node.data.losses}</p>
+        <p class="viz-details-line">Net: ${node.data.net >= 0 ? "+" : ""}${node.data.net}</p>
+      `;
+    }
+
+    const container = document.getElementById("comparison-viz-canvas");
+    if (!container) return;
+
+    const sketch = (p) => {
+      let cam;
+      const preparedNodes = [];
+      let selectedNodeId = null;
+      let autoRotationAngle = 0;
+
+      if (nodeSelectEl) {
+        const sortedNodes = [...nodes].sort((a, b) => a.name.localeCompare(b.name));
+        for (const node of sortedNodes) {
+          const option = document.createElement("option");
+          option.value = String(node.id);
+          option.textContent = `${node.name} (${node.teacher})`;
+          nodeSelectEl.appendChild(option);
+        }
+        nodeSelectEl.addEventListener("change", (event) => {
+          const value = event.target.value;
+          selectedNodeId = value ? Number(value) : null;
+        });
+      }
+
+      function rebuildNodeLayout() {
+        preparedNodes.length = 0;
+        nodeById.clear();
+        const count = nodes.length;
+        const shellRadius = Math.max(180, Math.min(container.clientWidth, 760) * 0.28);
+        for (let i = 0; i < count; i += 1) {
+          const nodeData = nodes[i];
+          const t = count > 1 ? i / (count - 1) : 0.5;
+          const inclination = Math.acos(1 - 2 * t);
+          const azimuth = (Math.PI * (3 - Math.sqrt(5))) * i;
+          const x = shellRadius * Math.sin(inclination) * Math.cos(azimuth);
+          const y = shellRadius * Math.sin(inclination) * Math.sin(azimuth);
+          const z = shellRadius * Math.cos(inclination);
+          const radius = p.map((nodeData.total || 0) + 1, 1, maxNodeVolume + 1, 7, 23);
+          const prepared = {
+            data: nodeData,
+            radius,
+            position: p.createVector(x, y, z),
+            phase: p.random(0, Math.PI * 2),
+            screenX: 0,
+            screenY: 0,
+            fillColor: colorFromId(p, nodeData.id),
+          };
+          preparedNodes.push(prepared);
+          nodeById.set(nodeData.id, prepared);
+        }
+
+        if (selectedNodeId === null && preparedNodes.length > 0) {
+          selectedNodeId = preparedNodes[0].data.id;
+          if (nodeSelectEl) {
+            nodeSelectEl.value = String(selectedNodeId);
+          }
+        }
+      }
+
+      p.setup = () => {
+        const width = container.clientWidth || 900;
+        const height = Math.max(440, Math.min(700, Math.round(width * 0.62)));
+        const canvas = p.createCanvas(width, height, p.WEBGL);
+        canvas.parent(container);
+        cam = p.createCamera();
+        rebuildNodeLayout();
+      };
+
+      p.windowResized = () => {
+        const width = container.clientWidth || 900;
+        const height = Math.max(440, Math.min(700, Math.round(width * 0.62)));
+        p.resizeCanvas(width, height);
+        rebuildNodeLayout();
+      };
+
+      p.draw = () => {
+        p.background(16, 20, 24);
+        p.orbitControl(1.0, 1.0, 0.2);
+        if (autoRotate && !p.mouseIsPressed) {
+          autoRotationAngle += 0.0022;
+        }
+        p.rotateY(autoRotationAngle);
+
+        p.ambientLight(70, 70, 88);
+        p.directionalLight(180, 180, 205, 0.2, 0.6, -1);
+        p.pointLight(255, 170, 120, 0, -220, 300);
+
+        for (const edge of edges) {
+          const nodeA = nodeById.get(edge.a_id);
+          const nodeB = nodeById.get(edge.b_id);
+          if (!nodeA || !nodeB) continue;
+
+          const edgeWeight = edge.total || 1;
+          const edgeThickness = p.map(edgeWeight, 1, maxEdgeWeight, 0.8, 4.6);
+          const imbalance = Number(edge.imbalance || 0);
+          const edgeAlpha = p.map(imbalance, 0, 1, 90, 255);
+
+          let strokeColor = p.color(130, 140, 160, edgeAlpha);
+          if (edge.winner_id && edge.loser_id) {
+            strokeColor = imbalance < 0.35
+              ? p.color(230, 150, 100, edgeAlpha)
+              : p.color(120, 210, 145, edgeAlpha);
+          }
+
+          p.stroke(strokeColor);
+          p.strokeWeight(edgeThickness);
+          p.line(
+            nodeA.position.x, nodeA.position.y, nodeA.position.z,
+            nodeB.position.x, nodeB.position.y, nodeB.position.z
+          );
+
+          if (edge.winner_id && edge.loser_id) {
+            const winnerNode = nodeById.get(edge.winner_id);
+            const loserNode = nodeById.get(edge.loser_id);
+            if (winnerNode && loserNode) {
+              const pulseSpeed = 0.012 + Math.min(edgeWeight, 12) * 0.0012;
+              const pulseT = (p.frameCount * pulseSpeed + (winnerNode.data.id % 17) * 0.07) % 1;
+              const pulseX = p.lerp(winnerNode.position.x, loserNode.position.x, pulseT);
+              const pulseY = p.lerp(winnerNode.position.y, loserNode.position.y, pulseT);
+              const pulseZ = p.lerp(winnerNode.position.z, loserNode.position.z, pulseT);
+              p.noStroke();
+              p.fill(245, 219, 164, 220);
+              p.push();
+              p.translate(pulseX, pulseY, pulseZ);
+              p.sphere(2.2 + Math.min(edgeWeight, 9) * 0.15);
+              p.pop();
+            }
+          }
+        }
+
+        for (const node of preparedNodes) {
+          const bob = Math.sin(p.frameCount * 0.022 + node.phase) * 3.8;
+          const nodeX = node.position.x;
+          const nodeY = node.position.y + bob;
+          const nodeZ = node.position.z;
+
+          p.push();
+          p.translate(nodeX, nodeY, nodeZ);
+          p.noStroke();
+          p.fill(node.fillColor);
+          p.sphere(node.radius, 18, 12);
+          p.pop();
+        }
+
+        const selectedNode = selectedNodeId !== null ? nodeById.get(selectedNodeId) : null;
+        if (selectedNode) {
+          p.push();
+          p.translate(selectedNode.position.x, selectedNode.position.y, selectedNode.position.z);
+          p.noFill();
+          p.stroke(245, 220, 150, 220);
+          p.strokeWeight(1.4);
+          p.sphere(selectedNode.radius + 4.8, 14, 10);
+          p.pop();
+        }
+
+        setDetails(selectedNode || null);
+      };
+    };
+
+    new p5(sketch);
+  })();
+</script>
+{% endblock %}

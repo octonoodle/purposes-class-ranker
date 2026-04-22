@@ -925,3 +925,106 @@ def rankings_page(
             "sort_dir": sort_dir,
         },
     )
+
+
+@app.get("/visualization")
+def comparisons_visualization_page(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    classes = db.execute(select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())).scalars().all()
+    preferences = db.execute(
+        select(Preference.good_class_id, Preference.bad_class_id)
+    ).all()
+
+    class_by_id = {class_row.id: class_row for class_row in classes}
+    wins_by_class: dict[int, int] = {class_row.id: 0 for class_row in classes}
+    losses_by_class: dict[int, int] = {class_row.id: 0 for class_row in classes}
+    pair_counts: dict[tuple[int, int], dict[str, int]] = {}
+
+    total_preferences = 0
+    for good_class_id, bad_class_id in preferences:
+        if good_class_id not in class_by_id or bad_class_id not in class_by_id:
+            continue
+
+        total_preferences += 1
+        wins_by_class[good_class_id] += 1
+        losses_by_class[bad_class_id] += 1
+
+        pair_key = tuple(sorted((good_class_id, bad_class_id)))
+        bucket = pair_counts.setdefault(
+            pair_key,
+            {"a_id": pair_key[0], "b_id": pair_key[1], "a_wins": 0, "b_wins": 0, "total": 0},
+        )
+        if good_class_id == pair_key[0]:
+            bucket["a_wins"] += 1
+        else:
+            bucket["b_wins"] += 1
+        bucket["total"] += 1
+
+    nodes: list[dict[str, Any]] = []
+    for class_row in classes:
+        wins = wins_by_class[class_row.id]
+        losses = losses_by_class[class_row.id]
+        nodes.append(
+            {
+                "id": class_row.id,
+                "name": class_row.class_name,
+                "teacher": class_row.teacher_name,
+                "wins": wins,
+                "losses": losses,
+                "total": wins + losses,
+                "net": wins - losses,
+            }
+        )
+
+    edges: list[dict[str, Any]] = []
+    for bucket in pair_counts.values():
+        a_wins = bucket["a_wins"]
+        b_wins = bucket["b_wins"]
+        winner_id: int | None = None
+        loser_id: int | None = None
+        if a_wins > b_wins:
+            winner_id = bucket["a_id"]
+            loser_id = bucket["b_id"]
+        elif b_wins > a_wins:
+            winner_id = bucket["b_id"]
+            loser_id = bucket["a_id"]
+
+        total = bucket["total"]
+        imbalance = abs(a_wins - b_wins) / total if total else 0.0
+        edges.append(
+            {
+                "a_id": bucket["a_id"],
+                "b_id": bucket["b_id"],
+                "a_wins": a_wins,
+                "b_wins": b_wins,
+                "total": total,
+                "winner_id": winner_id,
+                "loser_id": loser_id,
+                "imbalance": imbalance,
+            }
+        )
+
+    total_classes = len(classes)
+    possible_pairs = (total_classes * (total_classes - 1)) // 2
+    observed_pairs = len(pair_counts)
+    pair_coverage = (observed_pairs / possible_pairs) if possible_pairs else 0.0
+
+    viz_payload = {
+        "nodes": nodes,
+        "edges": edges,
+        "stats": {
+            "total_classes": total_classes,
+            "total_preferences": total_preferences,
+            "possible_pairs": possible_pairs,
+            "observed_pairs": observed_pairs,
+            "pair_coverage": pair_coverage,
+        },
+    }
+
+    return templates.TemplateResponse(
+        request=request,
+        name="visualization.html",
+        context={"viz_payload": viz_payload},
+    )
