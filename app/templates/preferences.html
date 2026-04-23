@@ -153,14 +153,28 @@
       <button type="submit" id="save-preference-btn">Save Preference</button>
     </form>
     <div class="student-suggestion-box" id="student-comparison-suggestion">
+      <button
+        type="button"
+        id="reroll-suggestion"
+        class="student-suggestion-reroll"
+        title="Reroll suggestion"
+        aria-label="Reroll suggestion"
+        disabled
+      >
+        &#x21bb;
+      </button>
       <p class="student-suggestion-title">Suggested Comparison</p>
       <p class="student-suggestion-body" id="student-suggestion-body">
         Select a student to get one missing comparison based on classes we already know they take.
       </p>
       <p class="student-suggestion-meta" id="student-suggestion-meta"></p>
       <div class="student-suggestion-actions">
-        <button type="button" id="apply-suggestion-forward" disabled>Set Left as Good</button>
-        <button type="button" id="apply-suggestion-reverse" disabled>Set Right as Good</button>
+        <button type="button" id="apply-suggestion-forward" class="student-suggestion-btn student-suggestion-btn-left" disabled>
+          Use Left as Good
+        </button>
+        <button type="button" id="apply-suggestion-reverse" class="student-suggestion-btn student-suggestion-btn-right" disabled>
+          Use Right as Good
+        </button>
       </div>
     </div>
     {% endif %}
@@ -291,6 +305,7 @@
     const submitButton = document.getElementById("save-preference-btn");
     const suggestionBody = document.getElementById("student-suggestion-body");
     const suggestionMeta = document.getElementById("student-suggestion-meta");
+    const rerollSuggestionButton = document.getElementById("reroll-suggestion");
     const applySuggestionForward = document.getElementById("apply-suggestion-forward");
     const applySuggestionReverse = document.getElementById("apply-suggestion-reverse");
     const gradeInputs = Array.from(form.querySelectorAll('input[name="student_grade"]'));
@@ -344,13 +359,25 @@
       if (!currentComparisonSuggestion) {
         suggestionBody.textContent = "No suggested comparison available yet for this student.";
         suggestionMeta.textContent = "";
+        if (rerollSuggestionButton) {
+          rerollSuggestionButton.disabled = true;
+        }
         applySuggestionForward.disabled = true;
         applySuggestionReverse.disabled = true;
         return;
       }
 
-      suggestionBody.textContent = `${currentComparisonSuggestion.left_class_name} (${currentComparisonSuggestion.left_teacher_name}) vs ${currentComparisonSuggestion.right_class_name} (${currentComparisonSuggestion.right_teacher_name})`;
+      suggestionBody.innerHTML = `
+        <span class="student-suggestion-side student-suggestion-side-left">Left:</span>
+        <span class="student-suggestion-class student-suggestion-class-left">${currentComparisonSuggestion.left_class_name} (${currentComparisonSuggestion.left_teacher_name})</span>
+        <span class="student-suggestion-vs">vs</span>
+        <span class="student-suggestion-side student-suggestion-side-right">Right:</span>
+        <span class="student-suggestion-class student-suggestion-class-right">${currentComparisonSuggestion.right_class_name} (${currentComparisonSuggestion.right_teacher_name})</span>
+      `;
       suggestionMeta.textContent = `Known classes: ${currentComparisonSuggestion.known_class_count} | Completed pairs: ${currentComparisonSuggestion.completed_pairs}/${currentComparisonSuggestion.possible_pairs} | Missing: ${currentComparisonSuggestion.missing_pairs}`;
+      if (rerollSuggestionButton) {
+        rerollSuggestionButton.disabled = currentComparisonSuggestion.missing_pairs <= 1;
+      }
       applySuggestionForward.disabled = false;
       applySuggestionReverse.disabled = false;
     };
@@ -398,7 +425,7 @@
 
     let lookupRequestId = 0;
     let lookupDebounce = null;
-    const lookupStudentData = async () => {
+    const lookupStudentData = async ({ excludePair = null } = {}) => {
       const requestId = ++lookupRequestId;
       if (!studentInput) return;
       const typedName = studentInput.value.trim();
@@ -409,7 +436,11 @@
       }
 
       try {
-        const response = await fetch(`/api/students/lookup?name=${encodeURIComponent(typedName)}`);
+        const query = new URLSearchParams({ name: typedName });
+        if (excludePair) {
+          query.set("exclude_pair", excludePair);
+        }
+        const response = await fetch(`/api/students/lookup?${query.toString()}`);
         if (requestId !== lookupRequestId) return;
         if (!response.ok) {
           setStudentInfo("Unable to load student data.", true);
@@ -600,6 +631,13 @@
     if (applySuggestionReverse) {
       applySuggestionReverse.addEventListener("click", () => {
         applySuggestedPair(true);
+      });
+    }
+    if (rerollSuggestionButton) {
+      rerollSuggestionButton.addEventListener("click", () => {
+        if (!currentComparisonSuggestion) return;
+        const excludePair = `${currentComparisonSuggestion.left_class_id}-${currentComparisonSuggestion.right_class_id}`;
+        void lookupStudentData({ excludePair });
       });
     }
     if (studentInput) {

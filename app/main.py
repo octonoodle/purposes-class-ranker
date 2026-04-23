@@ -357,7 +357,12 @@ def preferences_page(
 
 
 @app.get("/api/students/lookup")
-def lookup_student(request: Request, name: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+def lookup_student(
+    request: Request,
+    name: str,
+    exclude_pair: str | None = None,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
     twelfth_only = is_twelfth_grade_only_enabled(request)
     normalized_name = name.strip()
     if not normalized_name:
@@ -425,7 +430,23 @@ def lookup_student(request: Request, name: str, db: Session = Depends(get_db)) -
 
     comparison_suggestion: dict[str, Any] | None = None
     if missing_pairs:
-        left_id, right_id = random.choice(missing_pairs)
+        excluded_pair: tuple[int, int] | None = None
+        if exclude_pair:
+            try:
+                raw_left, raw_right = exclude_pair.split("-", 1)
+                left_val = int(raw_left)
+                right_val = int(raw_right)
+                excluded_pair = tuple(sorted((left_val, right_val)))
+            except (TypeError, ValueError):
+                excluded_pair = None
+
+        candidate_pairs = missing_pairs
+        if excluded_pair is not None:
+            filtered_pairs = [pair for pair in missing_pairs if pair != excluded_pair]
+            if filtered_pairs:
+                candidate_pairs = filtered_pairs
+
+        left_id, right_id = random.choice(candidate_pairs)
         left_class = class_by_id[left_id]
         right_class = class_by_id[right_id]
         comparison_suggestion = {

@@ -363,11 +363,35 @@ button:disabled {
 }
 
 .student-suggestion-box {
+  position: relative;
   margin-top: 0.72rem;
   border: 1px solid var(--bg2);
   border-radius: 10px;
-  padding: 0.72rem;
+  padding: 0.72rem 2.55rem 0.72rem 0.72rem;
   background: rgba(40, 40, 40, 0.44);
+}
+
+.student-suggestion-reroll {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  width: 1.85rem;
+  min-width: 1.85rem;
+  min-height: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  border-radius: 999px;
+  border-color: var(--bg3);
+  background: rgba(60, 56, 54, 0.55);
+  color: var(--fg-soft);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.student-suggestion-reroll:hover:not(:disabled) {
+  border-color: var(--yellow);
+  color: var(--yellow);
+  transform: rotate(22deg);
 }
 
 .student-suggestion-title {
@@ -384,6 +408,42 @@ button:disabled {
   color: var(--fg);
 }
 
+.student-suggestion-side {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  margin-right: 0.18rem;
+}
+
+.student-suggestion-side-left {
+  color: var(--aqua);
+}
+
+.student-suggestion-side-right {
+  color: var(--orange);
+}
+
+.student-suggestion-class {
+  font-weight: 700;
+}
+
+.student-suggestion-class-left {
+  color: #8ec07c;
+}
+
+.student-suggestion-class-right {
+  color: #fe8019;
+}
+
+.student-suggestion-vs {
+  margin: 0 0.34rem;
+  color: var(--fg-soft);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .student-suggestion-meta {
   margin: 0.34rem 0 0;
   font-size: 0.77rem;
@@ -392,13 +452,25 @@ button:disabled {
 
 .student-suggestion-actions {
   margin-top: 0.55rem;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.45rem;
-  flex-wrap: wrap;
 }
 
-.student-suggestion-actions button {
-  flex: 1 1 155px;
+.student-suggestion-btn {
+  width: 100%;
+}
+
+.student-suggestion-btn-left {
+  background: linear-gradient(180deg, #8ec07c, #689d6a);
+  border-color: #8ec07c;
+  color: #1d2021;
+}
+
+.student-suggestion-btn-right {
+  background: linear-gradient(180deg, #fe8019, #d65d0e);
+  border-color: #fe8019;
+  color: #1d2021;
 }
 
 .stats-grid {
