@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% set title = "Required vs Optional | Class Ranker" %}
+
+{% block content %}
+<section class="panel">
+  <h2>Average Score: Required vs Optional</h2>
+  <div class="stats-grid">
+    <article class="stat-card">
+      <p class="stat-label">Required Classes</p>
+      <p class="stat-value">{{ required_summary.class_count }}</p>
+      <p class="stat-value-small">Avg net {{ "%.2f"|format(required_summary.avg_net_score) }}</p>
+      <p class="stat-value-small">Avg win rate {{ "%.1f"|format(required_summary.avg_win_rate * 100) }}%</p>
+      <p class="stat-value-small">Avg comparisons {{ "%.1f"|format(required_summary.avg_total_ratings) }}</p>
+    </article>
+    <article class="stat-card">
+      <p class="stat-label">Optional Classes</p>
+      <p class="stat-value">{{ optional_summary.class_count }}</p>
+      <p class="stat-value-small">Avg net {{ "%.2f"|format(optional_summary.avg_net_score) }}</p>
+      <p class="stat-value-small">Avg win rate {{ "%.1f"|format(optional_summary.avg_win_rate * 100) }}%</p>
+      <p class="stat-value-small">Avg comparisons {{ "%.1f"|format(optional_summary.avg_total_ratings) }}</p>
+    </article>
+    <article class="stat-card stat-card-wide">
+      <p class="stat-label">Required Minus Optional</p>
+      <p class="stat-value-small">Net score difference: {{ "%+.2f"|format(comparison.net_score_diff) }}</p>
+      <p class="stat-value-small">Win rate difference: {{ "%+.1f"|format(comparison.win_rate_diff * 100) }}%</p>
+      <p class="stat-value-small">Comparison volume difference: {{ "%+.1f"|format(comparison.ratings_diff) }}</p>
+    </article>
+  </div>
+</section>
+{% endblock %}

@@ -1054,6 +1054,87 @@ def rankings_page(
     )
 
 
+@app.get("/required-vs-optional")
+def required_vs_optional_page(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    twelfth_only = is_twelfth_grade_only_enabled(request)
+    wins_stmt = select(Preference.good_class_id.label("class_id"), func.count(Preference.id).label("wins"))
+    losses_stmt = select(Preference.bad_class_id.label("class_id"), func.count(Preference.id).label("losses"))
+    if twelfth_only:
+        wins_stmt = wins_stmt.where(Preference.student_grade == 12)
+        losses_stmt = losses_stmt.where(Preference.student_grade == 12)
+    wins_subq = wins_stmt.group_by(Preference.good_class_id).subquery()
+    losses_subq = losses_stmt.group_by(Preference.bad_class_id).subquery()
+    wins_expr = func.coalesce(wins_subq.c.wins, 0)
+    losses_expr = func.coalesce(losses_subq.c.losses, 0)
+    total_ratings_expr = wins_expr + losses_expr
+    net_score_expr = wins_expr - losses_expr
+    win_rate_expr = case(
+        (
+            total_ratings_expr == 0,
+            0.0,
+        ),
+        else_=(wins_expr / total_ratings_expr),
+    )
+
+    class_scores = db.execute(
+        select(
+            Class.id,
+            Class.required_grade,
+            wins_expr.label("wins"),
+            losses_expr.label("losses"),
+            total_ratings_expr.label("total_ratings"),
+            net_score_expr.label("net_score"),
+            win_rate_expr.label("win_rate"),
+        )
+        .outerjoin(wins_subq, wins_subq.c.class_id == Class.id)
+        .outerjoin(losses_subq, losses_subq.c.class_id == Class.id)
+    ).all()
+
+    required_rows = [row for row in class_scores if row.required_grade > 0]
+    optional_rows = [row for row in class_scores if row.required_grade == 0]
+
+    def summarize(rows: list[Any]) -> dict[str, float | int]:
+        class_count = len(rows)
+        if class_count == 0:
+            return {
+                "class_count": 0,
+                "avg_net_score": 0.0,
+                "avg_win_rate": 0.0,
+                "avg_total_ratings": 0.0,
+            }
+
+        total_net_score = sum(float(row.net_score or 0) for row in rows)
+        total_win_rate = sum(float(row.win_rate or 0) for row in rows)
+        total_ratings = sum(float(row.total_ratings or 0) for row in rows)
+        return {
+            "class_count": class_count,
+            "avg_net_score": total_net_score / class_count,
+            "avg_win_rate": total_win_rate / class_count,
+            "avg_total_ratings": total_ratings / class_count,
+        }
+
+    required_summary = summarize(required_rows)
+    optional_summary = summarize(optional_rows)
+    comparison = {
+        "net_score_diff": float(required_summary["avg_net_score"]) - float(optional_summary["avg_net_score"]),
+        "win_rate_diff": float(required_summary["avg_win_rate"]) - float(optional_summary["avg_win_rate"]),
+        "ratings_diff": float(required_summary["avg_total_ratings"]) - float(optional_summary["avg_total_ratings"]),
+    }
+
+    return templates.TemplateResponse(
+        request=request,
+        name="required_vs_optional.html",
+        context={
+            "required_summary": required_summary,
+            "optional_summary": optional_summary,
+            "comparison": comparison,
+        },
+    )
+
+
 @app.get("/visualization")
 def comparisons_visualization_page(
     request: Request,
