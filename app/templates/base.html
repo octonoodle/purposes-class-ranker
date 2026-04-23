@@ -15,9 +15,36 @@
         <a href="/classes">Classes</a>
         <a href="/edit/classes">Edit</a>
         <a href="/rankings">Rankings</a>
+        <a href="/affinities">Affinities</a>
         <a href="/visualization">3D Viz</a>
         <a href="/stats">Stats</a>
       </nav>
+      <form method="post" action="/settings/grade-filter" class="topbar-filter-form">
+        <input
+          type="hidden"
+          name="return_to"
+          value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}"
+        />
+        <label class="topbar-filter-toggle">
+          <input
+            class="topbar-filter-input"
+            type="checkbox"
+            name="twelfth_only"
+            value="1"
+            onchange="this.form.submit()"
+            {% if request.cookies.get('show_twelfth_grade_only') == '1' %}checked{% endif %}
+          />
+          <span class="topbar-filter-track" aria-hidden="true">
+            <span class="topbar-filter-thumb"></span>
+          </span>
+          <span class="topbar-filter-text">
+            <span class="topbar-filter-label">Grade Scope</span>
+            <span class="topbar-filter-value">
+              {% if request.cookies.get('show_twelfth_grade_only') == '1' %}12th only{% else %}All grades{% endif %}
+            </span>
+          </span>
+        </label>
+      </form>
     </header>
 
     <main>

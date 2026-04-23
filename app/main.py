@@ -1,4 +1,5 @@
 import hashlib
+from collections import defaultdict
 from urllib.parse import urlencode
 from typing import Any
 
@@ -16,6 +17,7 @@ from .models import Class, Preference, Student
 app = FastAPI(title="Class Ranker")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+TWELFTH_GRADE_ONLY_COOKIE = "show_twelfth_grade_only"
 
 
 def redirect_with_message(
@@ -42,6 +44,10 @@ def set_recorder_cookie(response: RedirectResponse, recorded_by: str) -> Redirec
             samesite="lax",
         )
     return response
+
+
+def is_twelfth_grade_only_enabled(request: Request) -> bool:
+    return request.cookies.get(TWELFTH_GRADE_ONLY_COOKIE, "0") == "1"
 
 
 def normalize_class_name(class_name: str) -> str:
@@ -129,13 +135,23 @@ def backfill_class_codes_from_names() -> None:
                 class_row.class_code = class_code_from_name(class_row.class_name)
 
 
-def get_student_name_options(db: Session) -> list[str]:
-    student_names = db.execute(select(Student.name).order_by(Student.name.asc())).scalars().all()
-    legacy_names = db.execute(
-        select(Preference.student_name)
-        .distinct()
-        .order_by(Preference.student_name.asc())
-    ).scalars().all()
+def get_student_name_options(db: Session, preference_grade_filter: int | None = None) -> list[str]:
+    if preference_grade_filter is None:
+        student_names = db.execute(select(Student.name).order_by(Student.name.asc())).scalars().all()
+        legacy_stmt = (
+            select(Preference.student_name)
+            .distinct()
+            .order_by(Preference.student_name.asc())
+        )
+    else:
+        student_names = []
+        legacy_stmt = (
+            select(Preference.student_name)
+            .where(Preference.student_grade == preference_grade_filter)
+            .distinct()
+            .order_by(Preference.student_name.asc())
+        )
+    legacy_names = db.execute(legacy_stmt).scalars().all()
 
     names_by_lower: dict[str, str] = {}
     for name in student_names + legacy_names:
@@ -177,6 +193,22 @@ def startup() -> None:
 @app.get("/")
 def home() -> RedirectResponse:
     return RedirectResponse(url="/preferences", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/settings/grade-filter")
+def set_global_grade_filter(
+    twelfth_only: str | None = Form(None),
+    return_to: str = Form("/preferences"),
+) -> RedirectResponse:
+    target = return_to if return_to.startswith("/") else "/preferences"
+    response = RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie(
+        key=TWELFTH_GRADE_ONLY_COOKIE,
+        value="1" if twelfth_only == "1" else "0",
+        max_age=60 * 60 * 24 * 365,
+        samesite="lax",
+    )
+    return response
 
 
 @app.get("/classes")
@@ -242,15 +274,17 @@ def preferences_page(
     pending_good_class_id: int | None = None,
     pending_bad_class_id: int | None = None,
 ) -> Any:
+    twelfth_only = is_twelfth_grade_only_enabled(request)
+    grade_filter = 12 if twelfth_only else None
     classes = db.execute(select(Class).order_by(Class.class_name.asc())).scalars().all()
     class_by_id = {row.id: row for row in classes}
     cookie_recorded_by = request.cookies.get("recorder_name", "")
     normalized_lookup_student_name = (lookup_student_name or "").strip()
-    student_name_options = get_student_name_options(db)
+    student_name_options = get_student_name_options(db, preference_grade_filter=grade_filter)
 
     good_cls = aliased(Class)
     bad_cls = aliased(Class)
-    recent_preferences = db.execute(
+    recent_preferences_stmt = (
         select(
             Preference,
             good_cls.class_name.label("good_class_name"),
@@ -258,6 +292,11 @@ def preferences_page(
         )
         .join(good_cls, good_cls.id == Preference.good_class_id)
         .join(bad_cls, bad_cls.id == Preference.bad_class_id)
+    )
+    if twelfth_only:
+        recent_preferences_stmt = recent_preferences_stmt.where(Preference.student_grade == 12)
+    recent_preferences = db.execute(
+        recent_preferences_stmt
         .order_by(Preference.created_at.desc())
         .limit(15)
     ).all()
@@ -266,7 +305,7 @@ def preferences_page(
     if normalized_lookup_student_name:
         good_lookup_cls = aliased(Class)
         bad_lookup_cls = aliased(Class)
-        student_preferences = db.execute(
+        student_preferences_stmt = (
             select(
                 Preference,
                 good_lookup_cls.class_name.label("good_class_name"),
@@ -277,6 +316,11 @@ def preferences_page(
             .join(good_lookup_cls, good_lookup_cls.id == Preference.good_class_id)
             .join(bad_lookup_cls, bad_lookup_cls.id == Preference.bad_class_id)
             .where(func.lower(Preference.student_name) == normalized_lookup_student_name.lower())
+        )
+        if twelfth_only:
+            student_preferences_stmt = student_preferences_stmt.where(Preference.student_grade == 12)
+        student_preferences = db.execute(
+            student_preferences_stmt
             .order_by(Preference.created_at.desc(), Preference.id.desc())
         ).all()
 
@@ -312,7 +356,8 @@ def preferences_page(
 
 
 @app.get("/api/students/lookup")
-def lookup_student(name: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+def lookup_student(request: Request, name: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    twelfth_only = is_twelfth_grade_only_enabled(request)
     normalized_name = name.strip()
     if not normalized_name:
         return {"found": False}
@@ -322,18 +367,28 @@ def lookup_student(name: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     ).scalar_one_or_none()
     canonical_name = student_row.name if student_row is not None else None
     if canonical_name is None:
-        canonical_name = db.execute(
+        canonical_name_stmt = (
             select(Preference.student_name)
             .where(func.lower(Preference.student_name) == normalized_name.lower())
+        )
+        if twelfth_only:
+            canonical_name_stmt = canonical_name_stmt.where(Preference.student_grade == 12)
+        canonical_name = db.execute(
+            canonical_name_stmt
             .order_by(Preference.created_at.desc(), Preference.id.desc())
             .limit(1)
         ).scalar_one_or_none()
     if canonical_name is None:
         return {"found": False}
 
-    latest_preference = db.execute(
+    latest_preference_stmt = (
         select(Preference)
         .where(func.lower(Preference.student_name) == canonical_name.lower())
+    )
+    if twelfth_only:
+        latest_preference_stmt = latest_preference_stmt.where(Preference.student_grade == 12)
+    latest_preference = db.execute(
+        latest_preference_stmt
         .order_by(Preference.created_at.desc(), Preference.id.desc())
         .limit(1)
     ).scalar_one_or_none()
@@ -536,12 +591,17 @@ def edit_preferences_page(
     sort: str = "created_at",
     dir: str = "desc",
 ) -> Any:
+    twelfth_only = is_twelfth_grade_only_enabled(request)
+    grade_filter = 12 if twelfth_only else None
     page_size = 5
     safe_pref_page = pref_page if pref_page > 0 else 1
     sort_dir = "asc" if dir == "asc" else "desc"
     classes = db.execute(select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())).scalars().all()
-    student_name_options = get_student_name_options(db)
-    total_preferences = db.execute(select(func.count(Preference.id))).scalar_one()
+    student_name_options = get_student_name_options(db, preference_grade_filter=grade_filter)
+    total_preferences_stmt = select(func.count(Preference.id))
+    if twelfth_only:
+        total_preferences_stmt = total_preferences_stmt.where(Preference.student_grade == 12)
+    total_preferences = db.execute(total_preferences_stmt).scalar_one()
     total_pref_pages = max(1, (total_preferences + page_size - 1) // page_size)
     if safe_pref_page > total_pref_pages:
         safe_pref_page = total_pref_pages
@@ -557,10 +617,15 @@ def edit_preferences_page(
     sort_key = sort if sort in preference_sort_columns else "created_at"
     sort_expr = preference_sort_columns[sort_key]
     primary_order = sort_expr.asc() if sort_dir == "asc" else sort_expr.desc()
-    preferences = db.execute(
+    preferences_stmt = (
         select(Preference)
         .join(good_sort_cls, good_sort_cls.id == Preference.good_class_id)
         .join(bad_sort_cls, bad_sort_cls.id == Preference.bad_class_id)
+    )
+    if twelfth_only:
+        preferences_stmt = preferences_stmt.where(Preference.student_grade == 12)
+    preferences = db.execute(
+        preferences_stmt
         .order_by(primary_order, Preference.created_at.desc(), Preference.id.desc())
         .limit(page_size)
         .offset(offset)
@@ -596,8 +661,10 @@ def edit_preferences_by_student_page(
     sort: str = "created_at",
     dir: str = "desc",
 ) -> Any:
+    twelfth_only = is_twelfth_grade_only_enabled(request)
+    grade_filter = 12 if twelfth_only else None
     classes = db.execute(select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())).scalars().all()
-    student_name_options = get_student_name_options(db)
+    student_name_options = get_student_name_options(db, preference_grade_filter=grade_filter)
     normalized_lookup_student_name = (lookup_student_name or "").strip()
     sort_dir = "asc" if dir == "asc" else "desc"
     good_sort_cls = aliased(Class)
@@ -612,11 +679,16 @@ def edit_preferences_by_student_page(
     primary_order = sort_expr.asc() if sort_dir == "asc" else sort_expr.desc()
     preferences = []
     if normalized_lookup_student_name:
-        preferences = db.execute(
+        preferences_stmt = (
             select(Preference)
             .join(good_sort_cls, good_sort_cls.id == Preference.good_class_id)
             .join(bad_sort_cls, bad_sort_cls.id == Preference.bad_class_id)
             .where(func.lower(Preference.student_name) == normalized_lookup_student_name.lower())
+        )
+        if twelfth_only:
+            preferences_stmt = preferences_stmt.where(Preference.student_grade == 12)
+        preferences = db.execute(
+            preferences_stmt
             .order_by(primary_order, Preference.created_at.desc(), Preference.id.desc())
         ).scalars().all()
 
@@ -791,6 +863,7 @@ def recorder_rankings_page(
     dir: str = "desc",
     db: Session = Depends(get_db),
 ) -> Any:
+    twelfth_only = is_twelfth_grade_only_enabled(request)
     sort_dir = "asc" if dir == "asc" else "desc"
     total_preferences_expr = func.count(Preference.id)
     unique_students_expr = func.count(func.distinct(Preference.student_name))
@@ -806,31 +879,36 @@ def recorder_rankings_page(
     sort_expr = recorder_sort_columns[sort_key]
     primary_order = sort_expr.asc() if sort_dir == "asc" else sort_expr.desc()
 
+    recorder_rankings_stmt = select(
+        Preference.recorded_by.label("recorded_by"),
+        total_preferences_expr.label("total_preferences"),
+        unique_students_expr.label("unique_students"),
+        last_recorded_expr.label("last_recorded_at"),
+    )
+    if twelfth_only:
+        recorder_rankings_stmt = recorder_rankings_stmt.where(Preference.student_grade == 12)
     recorder_rankings = db.execute(
-        select(
-            Preference.recorded_by.label("recorded_by"),
-            total_preferences_expr.label("total_preferences"),
-            unique_students_expr.label("unique_students"),
-            last_recorded_expr.label("last_recorded_at"),
-        )
+        recorder_rankings_stmt
         .group_by(Preference.recorded_by)
         .order_by(primary_order, Preference.recorded_by.asc())
     ).all()
 
-    summary_row = db.execute(
-        select(
-            func.count(Preference.id).label("total_preferences"),
-            func.count(func.distinct(Preference.student_name)).label("total_unique_students"),
-            func.count(func.distinct(Preference.recorded_by)).label("total_recorders"),
-            func.max(Preference.created_at).label("latest_recorded_at"),
-        )
-    ).one()
-    total_classes = db.execute(select(func.count(Class.id))).scalar_one()
-    touched_class_ids = (
-        select(Preference.good_class_id.label("class_id"))
-        .union_all(select(Preference.bad_class_id.label("class_id")))
-        .subquery()
+    summary_stmt = select(
+        func.count(Preference.id).label("total_preferences"),
+        func.count(func.distinct(Preference.student_name)).label("total_unique_students"),
+        func.count(func.distinct(Preference.recorded_by)).label("total_recorders"),
+        func.max(Preference.created_at).label("latest_recorded_at"),
     )
+    if twelfth_only:
+        summary_stmt = summary_stmt.where(Preference.student_grade == 12)
+    summary_row = db.execute(summary_stmt).one()
+    total_classes = db.execute(select(func.count(Class.id))).scalar_one()
+    touched_good_classes_stmt = select(Preference.good_class_id.label("class_id"))
+    touched_bad_classes_stmt = select(Preference.bad_class_id.label("class_id"))
+    if twelfth_only:
+        touched_good_classes_stmt = touched_good_classes_stmt.where(Preference.student_grade == 12)
+        touched_bad_classes_stmt = touched_bad_classes_stmt.where(Preference.student_grade == 12)
+    touched_class_ids = touched_good_classes_stmt.union_all(touched_bad_classes_stmt).subquery()
     touched_classes = db.execute(
         select(func.count(func.distinct(touched_class_ids.c.class_id)))
     ).scalar_one()
@@ -861,17 +939,15 @@ def rankings_page(
     dir: str = "desc",
     db: Session = Depends(get_db),
 ) -> Any:
+    twelfth_only = is_twelfth_grade_only_enabled(request)
     sort_dir = "asc" if dir == "asc" else "desc"
-    wins_subq = (
-        select(Preference.good_class_id.label("class_id"), func.count(Preference.id).label("wins"))
-        .group_by(Preference.good_class_id)
-        .subquery()
-    )
-    losses_subq = (
-        select(Preference.bad_class_id.label("class_id"), func.count(Preference.id).label("losses"))
-        .group_by(Preference.bad_class_id)
-        .subquery()
-    )
+    wins_stmt = select(Preference.good_class_id.label("class_id"), func.count(Preference.id).label("wins"))
+    losses_stmt = select(Preference.bad_class_id.label("class_id"), func.count(Preference.id).label("losses"))
+    if twelfth_only:
+        wins_stmt = wins_stmt.where(Preference.student_grade == 12)
+        losses_stmt = losses_stmt.where(Preference.student_grade == 12)
+    wins_subq = wins_stmt.group_by(Preference.good_class_id).subquery()
+    losses_subq = losses_stmt.group_by(Preference.bad_class_id).subquery()
     wins_expr = func.coalesce(wins_subq.c.wins, 0)
     losses_expr = func.coalesce(losses_subq.c.losses, 0)
     total_ratings_expr = wins_expr + losses_expr
@@ -932,10 +1008,12 @@ def comparisons_visualization_page(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    twelfth_only = is_twelfth_grade_only_enabled(request)
     classes = db.execute(select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())).scalars().all()
-    preferences = db.execute(
-        select(Preference.good_class_id, Preference.bad_class_id)
-    ).all()
+    preferences_stmt = select(Preference.good_class_id, Preference.bad_class_id)
+    if twelfth_only:
+        preferences_stmt = preferences_stmt.where(Preference.student_grade == 12)
+    preferences = db.execute(preferences_stmt).all()
 
     class_by_id = {class_row.id: class_row for class_row in classes}
     wins_by_class: dict[int, int] = {class_row.id: 0 for class_row in classes}
@@ -1027,4 +1105,122 @@ def comparisons_visualization_page(
         request=request,
         name="visualization.html",
         context={"viz_payload": viz_payload},
+    )
+
+
+@app.get("/affinities")
+def class_affinities_page(
+    request: Request,
+    selected_class_id: int | None = None,
+    db: Session = Depends(get_db),
+) -> Any:
+    twelfth_only = is_twelfth_grade_only_enabled(request)
+    classes = db.execute(select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())).scalars().all()
+    class_by_id = {class_row.id: class_row for class_row in classes}
+
+    if not classes:
+        return templates.TemplateResponse(
+            request=request,
+            name="affinities.html",
+            context={
+                "classes": [],
+                "selected_class_id": None,
+                "selected_class": None,
+                "insight_data": None,
+                "message": "Add classes and preferences to generate affinity insights.",
+            },
+        )
+
+    if selected_class_id is None:
+        selected_class_id = classes[0].id
+    if selected_class_id not in class_by_id:
+        selected_class_id = classes[0].id
+    selected_class = class_by_id[selected_class_id]
+
+    preference_stmt = select(
+        Preference.student_name,
+        Preference.good_class_id,
+        Preference.bad_class_id,
+    )
+    if twelfth_only:
+        preference_stmt = preference_stmt.where(Preference.student_grade == 12)
+    preferences = db.execute(preference_stmt).all()
+
+    liked_selected_by_students: set[str] = set()
+    disliked_selected_by_students: set[str] = set()
+    for student_name, good_class_id, bad_class_id in preferences:
+        normalized_student = student_name.strip().lower()
+        if not normalized_student:
+            continue
+        if good_class_id == selected_class_id:
+            liked_selected_by_students.add(normalized_student)
+        if bad_class_id == selected_class_id:
+            disliked_selected_by_students.add(normalized_student)
+
+    liked_cohort_like_classes: dict[int, set[str]] = defaultdict(set)
+    liked_cohort_dislike_classes: dict[int, set[str]] = defaultdict(set)
+    disliked_cohort_dislike_classes: dict[int, set[str]] = defaultdict(set)
+    disliked_cohort_like_classes: dict[int, set[str]] = defaultdict(set)
+
+    for student_name, good_class_id, bad_class_id in preferences:
+        normalized_student = student_name.strip().lower()
+        if not normalized_student:
+            continue
+
+        if normalized_student in liked_selected_by_students:
+            if good_class_id != selected_class_id and good_class_id in class_by_id:
+                liked_cohort_like_classes[good_class_id].add(normalized_student)
+            if bad_class_id != selected_class_id and bad_class_id in class_by_id:
+                liked_cohort_dislike_classes[bad_class_id].add(normalized_student)
+
+        if normalized_student in disliked_selected_by_students:
+            if bad_class_id != selected_class_id and bad_class_id in class_by_id:
+                disliked_cohort_dislike_classes[bad_class_id].add(normalized_student)
+            if good_class_id != selected_class_id and good_class_id in class_by_id:
+                disliked_cohort_like_classes[good_class_id].add(normalized_student)
+
+    def summarize_class_set_counts(
+        class_to_students: dict[int, set[str]],
+        cohort_size: int,
+        limit: int = 8,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for class_id, student_set in class_to_students.items():
+            class_row = class_by_id.get(class_id)
+            if class_row is None:
+                continue
+            support = len(student_set)
+            confidence = (support / cohort_size) if cohort_size else 0.0
+            rows.append(
+                {
+                    "class_id": class_id,
+                    "class_name": class_row.class_name,
+                    "teacher_name": class_row.teacher_name,
+                    "support": support,
+                    "confidence": confidence,
+                }
+            )
+        rows.sort(key=lambda row: (-row["support"], row["class_name"].lower(), row["teacher_name"].lower()))
+        return rows[:limit]
+
+    liked_cohort_size = len(liked_selected_by_students)
+    disliked_cohort_size = len(disliked_selected_by_students)
+    insight_data = {
+        "liked_cohort_size": liked_cohort_size,
+        "disliked_cohort_size": disliked_cohort_size,
+        "liked_also_enjoy": summarize_class_set_counts(liked_cohort_like_classes, liked_cohort_size),
+        "liked_but_not_enjoy": summarize_class_set_counts(liked_cohort_dislike_classes, liked_cohort_size),
+        "disliked_also_dislike": summarize_class_set_counts(disliked_cohort_dislike_classes, disliked_cohort_size),
+        "disliked_but_enjoy": summarize_class_set_counts(disliked_cohort_like_classes, disliked_cohort_size),
+    }
+
+    return templates.TemplateResponse(
+        request=request,
+        name="affinities.html",
+        context={
+            "classes": classes,
+            "selected_class_id": selected_class_id,
+            "selected_class": selected_class,
+            "insight_data": insight_data,
+        },
     )

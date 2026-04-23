@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% set title = "Affinities | Class Ranker" %}
+
+{% macro affinity_list(rows, empty_text) -%}
+  {% if rows %}
+  <ul class="affinity-list">
+    {% for row in rows %}
+    <li>
+      <span class="affinity-class">{{ row.class_name }}</span>
+      <span class="affinity-meta">
+        {{ row.teacher_name }} · {{ row.support }} student{{ '' if row.support == 1 else 's' }} · {{ "%.0f"|format(row.confidence * 100) }}%
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="affinity-empty">{{ empty_text }}</p>
+  {% endif %}
+{%- endmacro %}
+
+{% block content %}
+<section class="panel">
+  <h2>Class Affinities</h2>
+  <form method="get" action="/affinities" class="grid-form compact-form">
+    <label>
+      Selected class
+      <select name="selected_class_id">
+        {% for class in classes %}
+        <option value="{{ class.id }}" {% if class.id == selected_class_id %}selected{% endif %}>
+          {{ class.class_name }} ({{ class.teacher_name }})
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Analyze</button>
+  </form>
+</section>
+
+{% if selected_class and insight_data %}
+<section class="panel">
+  <h2>People who like {{ selected_class.class_name }}</h2>
+  <p class="affinity-summary">
+    Cohort size: <strong>{{ insight_data.liked_cohort_size }}</strong> student{{ '' if insight_data.liked_cohort_size == 1 else 's' }}.
+  </p>
+  <div class="affinity-grid">
+    <article class="affinity-card">
+      <h3>Also enjoy</h3>
+      {{ affinity_list(insight_data.liked_also_enjoy, "No clear pattern yet.") }}
+    </article>
+    <article class="affinity-card">
+      <h3>But not enjoy</h3>
+      {{ affinity_list(insight_data.liked_but_not_enjoy, "No clear pattern yet.") }}
+    </article>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>People who dislike {{ selected_class.class_name }}</h2>
+  <p class="affinity-summary">
+    Cohort size: <strong>{{ insight_data.disliked_cohort_size }}</strong> student{{ '' if insight_data.disliked_cohort_size == 1 else 's' }}.
+  </p>
+  <div class="affinity-grid">
+    <article class="affinity-card">
+      <h3>Also dislike</h3>
+      {{ affinity_list(insight_data.disliked_also_dislike, "No clear pattern yet.") }}
+    </article>
+    <article class="affinity-card">
+      <h3>But enjoy</h3>
+      {{ affinity_list(insight_data.disliked_but_enjoy, "No clear pattern yet.") }}
+    </article>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
