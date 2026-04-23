@@ -1126,7 +1126,26 @@ def class_affinities_page(
     db: Session = Depends(get_db),
 ) -> Any:
     twelfth_only = is_twelfth_grade_only_enabled(request)
-    classes = db.execute(select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())).scalars().all()
+    preference_stmt = select(
+        Preference.student_name,
+        Preference.good_class_id,
+        Preference.bad_class_id,
+    )
+    if twelfth_only:
+        preference_stmt = preference_stmt.where(Preference.student_grade == 12)
+    preferences = db.execute(preference_stmt).all()
+
+    classes_stmt = select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())
+    if twelfth_only:
+        active_class_ids: set[int] = set()
+        for _, good_class_id, bad_class_id in preferences:
+            active_class_ids.add(good_class_id)
+            active_class_ids.add(bad_class_id)
+        if active_class_ids:
+            classes_stmt = classes_stmt.where(Class.id.in_(active_class_ids))
+        else:
+            classes_stmt = classes_stmt.where(text("1 = 0"))
+    classes = db.execute(classes_stmt).scalars().all()
     class_by_id = {class_row.id: class_row for class_row in classes}
 
     if not classes:
@@ -1147,15 +1166,6 @@ def class_affinities_page(
     if selected_class_id not in class_by_id:
         selected_class_id = classes[0].id
     selected_class = class_by_id[selected_class_id]
-
-    preference_stmt = select(
-        Preference.student_name,
-        Preference.good_class_id,
-        Preference.bad_class_id,
-    )
-    if twelfth_only:
-        preference_stmt = preference_stmt.where(Preference.student_grade == 12)
-    preferences = db.execute(preference_stmt).all()
 
     liked_selected_by_students: set[str] = set()
     disliked_selected_by_students: set[str] = set()
