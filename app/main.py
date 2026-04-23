@@ -1009,11 +1009,22 @@ def comparisons_visualization_page(
     db: Session = Depends(get_db),
 ) -> Any:
     twelfth_only = is_twelfth_grade_only_enabled(request)
-    classes = db.execute(select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())).scalars().all()
     preferences_stmt = select(Preference.good_class_id, Preference.bad_class_id)
     if twelfth_only:
         preferences_stmt = preferences_stmt.where(Preference.student_grade == 12)
     preferences = db.execute(preferences_stmt).all()
+
+    classes_stmt = select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())
+    if twelfth_only:
+        active_class_ids: set[int] = set()
+        for good_class_id, bad_class_id in preferences:
+            active_class_ids.add(good_class_id)
+            active_class_ids.add(bad_class_id)
+        if active_class_ids:
+            classes_stmt = classes_stmt.where(Class.id.in_(active_class_ids))
+        else:
+            classes_stmt = classes_stmt.where(text("1 = 0"))
+    classes = db.execute(classes_stmt).scalars().all()
 
     class_by_id = {class_row.id: class_row for class_row in classes}
     wins_by_class: dict[int, int] = {class_row.id: 0 for class_row in classes}
@@ -1182,7 +1193,7 @@ def class_affinities_page(
     def summarize_class_set_counts(
         class_to_students: dict[int, set[str]],
         cohort_size: int,
-        limit: int = 8,
+        limit: int = 5,
     ) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for class_id, student_set in class_to_students.items():
