@@ -355,6 +355,28 @@
       applySuggestionReverse.disabled = false;
     };
 
+    const submitFromSuggestion = () => {
+      refresh();
+      if (submitButton.disabled || !goodHidden.value || !badHidden.value) {
+        setStudentInfo("Suggested pair set, but class selection is incomplete.", true);
+        return;
+      }
+      if (!studentInput || !studentInput.value.trim()) {
+        setStudentInfo("Suggested pair set. Enter/select a student name before submitting.", true);
+        return;
+      }
+      const recorderInput = form.querySelector('input[name="recorded_by"]');
+      if (recorderInput && !String(recorderInput.value || "").trim()) {
+        setStudentInfo("Suggested pair set. Enter your name in Recorded by before submitting.", true);
+        return;
+      }
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        form.submit();
+      }
+    };
+
     const applySuggestedPair = (swap = false) => {
       if (!currentComparisonSuggestion) return;
       const goodClassId = swap
@@ -367,7 +389,8 @@
       const badLoaded = setClassById(badInput, badHidden, badClassId);
       refresh();
       if (goodLoaded && badLoaded) {
-        setStudentInfo("Suggested pair applied. Flip if student prefers the other class.");
+        setStudentInfo("Suggested pair applied. Submitting preference...");
+        submitFromSuggestion();
       } else {
         setStudentInfo("Suggested pair could not be applied to available class options.", true);
       }
@@ -601,6 +624,9 @@
     restorePreferenceState();
     setComparisonSuggestion(null);
     refresh();
+    if (studentInput && studentInput.value.trim()) {
+      void lookupStudentData();
+    }
   })();
 </script>
 {% endblock %}
