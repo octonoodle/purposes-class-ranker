@@ -362,6 +362,45 @@ button:disabled {
   color: var(--red);
 }
 
+.student-suggestion-box {
+  margin-top: 0.72rem;
+  border: 1px solid var(--bg2);
+  border-radius: 10px;
+  padding: 0.72rem;
+  background: rgba(40, 40, 40, 0.44);
+}
+
+.student-suggestion-title {
+  margin: 0;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--aqua);
+}
+
+.student-suggestion-body {
+  margin: 0.4rem 0 0;
+  font-size: 0.86rem;
+  color: var(--fg);
+}
+
+.student-suggestion-meta {
+  margin: 0.34rem 0 0;
+  font-size: 0.77rem;
+  color: var(--fg-soft);
+}
+
+.student-suggestion-actions {
+  margin-top: 0.55rem;
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.student-suggestion-actions button {
+  flex: 1 1 155px;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -446,6 +485,18 @@ th {
 
 tbody tr:nth-child(2n) {
   background: rgba(80, 73, 69, 0.35);
+}
+
+tbody tr.required-class-row td {
+  background: rgba(251, 73, 52, 0.08);
+}
+
+tbody tr.required-class-row td:first-child {
+  border-left: 2px solid #fb4934;
+}
+
+tbody tr.required-class-row td:last-child {
+  border-right: 2px solid #fb4934;
 }
 
 .message {
@@ -844,6 +895,47 @@ tbody tr:nth-child(2n) {
   color: var(--fg-soft);
 }
 
+.suggestion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.65rem;
+}
+
+.suggestion-card {
+  border: 1px solid var(--bg2);
+  border-radius: 10px;
+  padding: 0.7rem;
+  background: rgba(40, 40, 40, 0.46);
+}
+
+.suggestion-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--aqua);
+}
+
+.suggestion-class {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.suggestion-class span {
+  color: var(--fg-soft);
+  font-weight: 500;
+}
+
+.suggestion-vs {
+  margin: 0.22rem 0;
+  font-size: 0.74rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--orange);
+}
+
 .swatch {
   width: 12px;
   height: 12px;
@@ -1073,6 +1165,11 @@ tbody tr:nth-child(2n) {
     border-radius: 8px;
     padding: 0.35rem 0.45rem;
     background: rgba(50, 48, 47, 0.72);
+  }
+
+  .table-wrap tr.required-class-row {
+    border-color: #fb4934;
+    box-shadow: inset 0 0 0 1px rgba(251, 73, 52, 0.4);
   }
 
   .table-wrap td {

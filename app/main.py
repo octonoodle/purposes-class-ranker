@@ -1,4 +1,5 @@
 import hashlib
+import random
 from collections import defaultdict
 from urllib.parse import urlencode
 from typing import Any
@@ -392,11 +393,60 @@ def lookup_student(request: Request, name: str, db: Session = Depends(get_db)) -
         .order_by(Preference.created_at.desc(), Preference.id.desc())
         .limit(1)
     ).scalar_one_or_none()
+    student_preferences_stmt = (
+        select(Preference.good_class_id, Preference.bad_class_id)
+        .where(func.lower(Preference.student_name) == canonical_name.lower())
+    )
+    if twelfth_only:
+        student_preferences_stmt = student_preferences_stmt.where(Preference.student_grade == 12)
+    student_preferences = db.execute(student_preferences_stmt).all()
+
+    known_class_ids: set[int] = set()
+    seen_pairs: set[tuple[int, int]] = set()
+    for good_class_id, bad_class_id in student_preferences:
+        known_class_ids.add(good_class_id)
+        known_class_ids.add(bad_class_id)
+        seen_pairs.add(tuple(sorted((good_class_id, bad_class_id))))
+
+    class_rows: list[Class] = []
+    if known_class_ids:
+        class_rows = db.execute(
+            select(Class).where(Class.id.in_(known_class_ids)).order_by(Class.class_name.asc())
+        ).scalars().all()
+    class_by_id = {class_row.id: class_row for class_row in class_rows}
+    known_ids = sorted(class_by_id.keys())
+    possible_pairs = (len(known_ids) * (len(known_ids) - 1)) // 2
+    missing_pairs: list[tuple[int, int]] = []
+    for index, left_id in enumerate(known_ids):
+        for right_id in known_ids[index + 1 :]:
+            pair_key = (left_id, right_id)
+            if pair_key not in seen_pairs:
+                missing_pairs.append(pair_key)
+
+    comparison_suggestion: dict[str, Any] | None = None
+    if missing_pairs:
+        left_id, right_id = random.choice(missing_pairs)
+        left_class = class_by_id[left_id]
+        right_class = class_by_id[right_id]
+        comparison_suggestion = {
+            "left_class_id": left_id,
+            "left_class_name": left_class.class_name,
+            "left_teacher_name": left_class.teacher_name,
+            "right_class_id": right_id,
+            "right_class_name": right_class.class_name,
+            "right_teacher_name": right_class.teacher_name,
+            "known_class_count": len(known_ids),
+            "completed_pairs": len(seen_pairs),
+            "missing_pairs": len(missing_pairs),
+            "possible_pairs": possible_pairs,
+        }
+
     if latest_preference is None:
         return {
             "found": True,
             "student_name": canonical_name,
             "latest_preference": None,
+            "comparison_suggestion": comparison_suggestion,
         }
 
     return {
@@ -413,6 +463,7 @@ def lookup_student(request: Request, name: str, db: Session = Depends(get_db)) -
                 else None
             ),
         },
+        "comparison_suggestion": comparison_suggestion,
     }
 
 
@@ -1243,5 +1294,102 @@ def class_affinities_page(
             "selected_class_id": selected_class_id,
             "selected_class": selected_class,
             "insight_data": insight_data,
+        },
+    )
+
+
+@app.get("/suggestions")
+def comparison_suggestions_page(
+    request: Request,
+    sample_size: int = 10,
+    db: Session = Depends(get_db),
+) -> Any:
+    twelfth_only = is_twelfth_grade_only_enabled(request)
+    safe_sample_size = max(1, min(sample_size, 50))
+
+    preferences_stmt = select(Preference.good_class_id, Preference.bad_class_id)
+    if twelfth_only:
+        preferences_stmt = preferences_stmt.where(Preference.student_grade == 12)
+    preferences = db.execute(preferences_stmt).all()
+
+    classes_stmt = select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())
+    if twelfth_only:
+        active_class_ids: set[int] = set()
+        for good_class_id, bad_class_id in preferences:
+            active_class_ids.add(good_class_id)
+            active_class_ids.add(bad_class_id)
+        if active_class_ids:
+            classes_stmt = classes_stmt.where(Class.id.in_(active_class_ids))
+        else:
+            classes_stmt = classes_stmt.where(text("1 = 0"))
+    classes = db.execute(classes_stmt).scalars().all()
+    class_by_id = {class_row.id: class_row for class_row in classes}
+
+    class_ids = [class_row.id for class_row in classes]
+    pair_counts: dict[tuple[int, int], int] = defaultdict(int)
+    observed_pairs: set[tuple[int, int]] = set()
+    for good_class_id, bad_class_id in preferences:
+        if good_class_id not in class_by_id or bad_class_id not in class_by_id:
+            continue
+        pair_key = tuple(sorted((good_class_id, bad_class_id)))
+        observed_pairs.add(pair_key)
+        pair_counts[pair_key] += 1
+
+    missing_pairs: list[tuple[int, int]] = []
+    for i in range(len(class_ids)):
+        left_id = class_ids[i]
+        for j in range(i + 1, len(class_ids)):
+            right_id = class_ids[j]
+            pair_key = (left_id, right_id) if left_id < right_id else (right_id, left_id)
+            if pair_key not in observed_pairs:
+                missing_pairs.append(pair_key)
+
+    random.shuffle(missing_pairs)
+    suggested_pairs = missing_pairs[:safe_sample_size]
+    suggestions = [
+        {
+            "left_class": class_by_id[left_id],
+            "right_class": class_by_id[right_id],
+        }
+        for left_id, right_id in suggested_pairs
+        if left_id in class_by_id and right_id in class_by_id
+    ]
+
+    singleton_pairs = []
+    for (left_id, right_id), count in pair_counts.items():
+        if count not in (1, 2):
+            continue
+        if left_id not in class_by_id or right_id not in class_by_id:
+            continue
+        singleton_pairs.append(
+            {
+                "left_class": class_by_id[left_id],
+                "right_class": class_by_id[right_id],
+                "count": count,
+            }
+        )
+    singleton_pairs.sort(
+        key=lambda row: (
+            row["count"],
+            row["left_class"].class_name.lower(),
+            row["right_class"].class_name.lower(),
+        )
+    )
+
+    total_classes = len(classes)
+    possible_pairs = (total_classes * (total_classes - 1)) // 2
+    return templates.TemplateResponse(
+        request=request,
+        name="suggestions.html",
+        context={
+            "sample_size": safe_sample_size,
+            "suggestions": suggestions,
+            "singleton_pairs": singleton_pairs[:50],
+            "stats": {
+                "total_classes": total_classes,
+                "possible_pairs": possible_pairs,
+                "completed_pairs": len(observed_pairs),
+                "missing_pairs": len(missing_pairs),
+            },
         },
     )

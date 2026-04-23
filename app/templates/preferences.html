@@ -152,6 +152,17 @@
       <p class="form-error" id="pair-error" aria-live="polite"></p>
       <button type="submit" id="save-preference-btn">Save Preference</button>
     </form>
+    <div class="student-suggestion-box" id="student-comparison-suggestion">
+      <p class="student-suggestion-title">Suggested Comparison</p>
+      <p class="student-suggestion-body" id="student-suggestion-body">
+        Select a student to get one missing comparison based on classes we already know they take.
+      </p>
+      <p class="student-suggestion-meta" id="student-suggestion-meta"></p>
+      <div class="student-suggestion-actions">
+        <button type="button" id="apply-suggestion-forward" disabled>Set Left as Good</button>
+        <button type="button" id="apply-suggestion-reverse" disabled>Set Right as Good</button>
+      </div>
+    </div>
     {% endif %}
   </section>
 
@@ -276,12 +287,15 @@
     const clearStudentButton = document.getElementById("clear_student_name");
     const studentInfo = document.getElementById("student-autofill-note");
     const classOptions = Array.from(document.querySelectorAll("#class-options option"));
-    const studentOptions = Array.from(document.querySelectorAll("#student-options option"));
-    const studentSet = new Set(studentOptions.map((option) => option.value.trim().toLowerCase()));
     const errorText = document.getElementById("pair-error");
     const submitButton = document.getElementById("save-preference-btn");
+    const suggestionBody = document.getElementById("student-suggestion-body");
+    const suggestionMeta = document.getElementById("student-suggestion-meta");
+    const applySuggestionForward = document.getElementById("apply-suggestion-forward");
+    const applySuggestionReverse = document.getElementById("apply-suggestion-reverse");
     const gradeInputs = Array.from(form.querySelectorAll('input[name="student_grade"]'));
     const preferenceStateKey = "classranker_preference_form_state";
+    let currentComparisonSuggestion = null;
 
     const normalize = (value) => value.trim().toLowerCase();
     const valueToId = new Map();
@@ -321,6 +335,44 @@
       return true;
     };
 
+    const setComparisonSuggestion = (suggestion) => {
+      currentComparisonSuggestion = suggestion || null;
+      if (!suggestionBody || !suggestionMeta || !applySuggestionForward || !applySuggestionReverse) {
+        return;
+      }
+
+      if (!currentComparisonSuggestion) {
+        suggestionBody.textContent = "No suggested comparison available yet for this student.";
+        suggestionMeta.textContent = "";
+        applySuggestionForward.disabled = true;
+        applySuggestionReverse.disabled = true;
+        return;
+      }
+
+      suggestionBody.textContent = `${currentComparisonSuggestion.left_class_name} (${currentComparisonSuggestion.left_teacher_name}) vs ${currentComparisonSuggestion.right_class_name} (${currentComparisonSuggestion.right_teacher_name})`;
+      suggestionMeta.textContent = `Known classes: ${currentComparisonSuggestion.known_class_count} | Completed pairs: ${currentComparisonSuggestion.completed_pairs}/${currentComparisonSuggestion.possible_pairs} | Missing: ${currentComparisonSuggestion.missing_pairs}`;
+      applySuggestionForward.disabled = false;
+      applySuggestionReverse.disabled = false;
+    };
+
+    const applySuggestedPair = (swap = false) => {
+      if (!currentComparisonSuggestion) return;
+      const goodClassId = swap
+        ? currentComparisonSuggestion.right_class_id
+        : currentComparisonSuggestion.left_class_id;
+      const badClassId = swap
+        ? currentComparisonSuggestion.left_class_id
+        : currentComparisonSuggestion.right_class_id;
+      const goodLoaded = setClassById(goodInput, goodHidden, goodClassId);
+      const badLoaded = setClassById(badInput, badHidden, badClassId);
+      refresh();
+      if (goodLoaded && badLoaded) {
+        setStudentInfo("Suggested pair applied. Flip if student prefers the other class.");
+      } else {
+        setStudentInfo("Suggested pair could not be applied to available class options.", true);
+      }
+    };
+
     let lookupRequestId = 0;
     let lookupDebounce = null;
     const lookupStudentData = async () => {
@@ -329,10 +381,7 @@
       const typedName = studentInput.value.trim();
       if (!typedName) {
         setStudentInfo("");
-        return;
-      }
-      if (!studentSet.has(normalize(typedName))) {
-        setStudentInfo("");
+        setComparisonSuggestion(null);
         return;
       }
 
@@ -347,12 +396,15 @@
         const data = await response.json();
         if (!data.found) {
           setStudentInfo("");
+          setComparisonSuggestion(null);
           return;
         }
 
         if (data.student_name) {
           studentInput.value = data.student_name;
         }
+
+        setComparisonSuggestion(data.comparison_suggestion || null);
 
         const latestPreference = data.latest_preference;
         if (!latestPreference) {
@@ -513,7 +565,18 @@
         studentInput.value = "";
         lookupRequestId += 1;
         setStudentInfo("");
+        setComparisonSuggestion(null);
         studentInput.focus();
+      });
+    }
+    if (applySuggestionForward) {
+      applySuggestionForward.addEventListener("click", () => {
+        applySuggestedPair(false);
+      });
+    }
+    if (applySuggestionReverse) {
+      applySuggestionReverse.addEventListener("click", () => {
+        applySuggestedPair(true);
       });
     }
     if (studentInput) {
@@ -536,6 +599,7 @@
     });
 
     restorePreferenceState();
+    setComparisonSuggestion(null);
     refresh();
   })();
 </script>

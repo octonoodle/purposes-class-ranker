@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% set title = "Suggestions | Class Ranker" %}
+
+{% block content %}
+<section class="panel">
+  <h2>Random Comparison Suggestions</h2>
+  <form method="get" action="/suggestions" class="grid-form compact-form">
+    <label>
+      Number of random suggestions
+      <input type="number" name="sample_size" min="1" max="50" value="{{ sample_size }}" />
+    </label>
+    <button type="submit">Refresh Suggestions</button>
+  </form>
+  <div class="stats-grid">
+    <article class="stat-card">
+      <p class="stat-label">Classes Considered</p>
+      <p class="stat-value">{{ stats.total_classes }}</p>
+    </article>
+    <article class="stat-card">
+      <p class="stat-label">Possible Pairs</p>
+      <p class="stat-value">{{ stats.possible_pairs }}</p>
+    </article>
+    <article class="stat-card">
+      <p class="stat-label">Completed Pairs</p>
+      <p class="stat-value">{{ stats.completed_pairs }}</p>
+    </article>
+    <article class="stat-card">
+      <p class="stat-label">Missing Pairs</p>
+      <p class="stat-value">{{ stats.missing_pairs }}</p>
+    </article>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Try These Next</h2>
+  {% if suggestions %}
+  <div class="suggestion-grid">
+    {% for row in suggestions %}
+    <article class="suggestion-card">
+      <p class="suggestion-title">Suggested Pair {{ loop.index }}</p>
+      <p class="suggestion-class">{{ row.left_class.class_name }} <span>({{ row.left_class.teacher_name }})</span></p>
+      <p class="suggestion-vs">vs</p>
+      <p class="suggestion-class">{{ row.right_class.class_name }} <span>({{ row.right_class.teacher_name }})</span></p>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="affinity-empty">No missing class comparisons remain for this filter scope.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Singletons (Compared Only 1-2 Times)</h2>
+  {% if singleton_pairs %}
+  <div class="suggestion-grid">
+    {% for row in singleton_pairs %}
+    <article class="suggestion-card">
+      <p class="suggestion-title">
+        Compared {{ row.count }} time{{ '' if row.count == 1 else 's' }}
+      </p>
+      <p class="suggestion-class">{{ row.left_class.class_name }} <span>({{ row.left_class.teacher_name }})</span></p>
+      <p class="suggestion-vs">vs</p>
+      <p class="suggestion-class">{{ row.right_class.class_name }} <span>({{ row.right_class.teacher_name }})</span></p>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="affinity-empty">No singleton pairs in the current filter scope.</p>
+  {% endif %}
+</section>
+{% endblock %}

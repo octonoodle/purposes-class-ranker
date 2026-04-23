@@ -48,7 +48,7 @@
       </thead>
       <tbody>
         {% for class, wins, losses, net_score, win_rate in rankings %}
-        <tr>
+        <tr class="{% if class.required_grade > 0 %}required-class-row{% endif %}">
           <td data-label="Rank">{{ loop.index }}</td>
           <td data-label="Class">{{ class.class_name }}</td>
           <td data-label="ID (Hash)">{{ class.class_code }}</td>
