@@ -1013,6 +1013,17 @@ def rankings_page(
 ) -> Any:
     twelfth_only = is_twelfth_grade_only_enabled(request)
     sort_dir = "asc" if dir == "asc" else "desc"
+    active_class_ids: set[int] | None = None
+    if twelfth_only:
+        active_class_ids = set()
+        active_pairs = db.execute(
+            select(Preference.good_class_id, Preference.bad_class_id)
+            .where(Preference.student_grade == 12)
+        ).all()
+        for good_class_id, bad_class_id in active_pairs:
+            active_class_ids.add(good_class_id)
+            active_class_ids.add(bad_class_id)
+
     wins_stmt = select(Preference.good_class_id.label("class_id"), func.count(Preference.id).label("wins"))
     losses_stmt = select(Preference.bad_class_id.label("class_id"), func.count(Preference.id).label("losses"))
     if twelfth_only:
@@ -1051,7 +1062,7 @@ def rankings_page(
     else:
         order_by_columns = [primary_order, Class.class_name.asc(), Class.class_code.asc()]
 
-    rankings = db.execute(
+    rankings_stmt = (
         select(
             Class,
             wins_expr.label("wins"),
@@ -1061,7 +1072,14 @@ def rankings_page(
         )
         .outerjoin(wins_subq, wins_subq.c.class_id == Class.id)
         .outerjoin(losses_subq, losses_subq.c.class_id == Class.id)
-        .order_by(*order_by_columns)
+    )
+    if twelfth_only:
+        if active_class_ids:
+            rankings_stmt = rankings_stmt.where(Class.id.in_(active_class_ids))
+        else:
+            rankings_stmt = rankings_stmt.where(text("1 = 0"))
+    rankings = db.execute(
+        rankings_stmt.order_by(*order_by_columns)
     ).all()
 
     return templates.TemplateResponse(
