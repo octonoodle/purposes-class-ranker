@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% set title = "Exclusions | Class Ranker" %}
+
+{% block content %}
+<section class="panel">
+  <h2>Excluded Classes</h2>
+  <p class="affinity-summary">
+    Checked classes are excluded from Rankings, 3D Viz, Affinities, and Req vs Optional analytics.
+  </p>
+  <form method="post" action="/exclusions" class="exclusions-form">
+    <div class="exclusions-actions">
+      <button type="button" id="exclusions-show-all" class="exclusions-toggle-btn">Show All</button>
+      <button type="button" id="exclusions-hide-all" class="exclusions-toggle-btn">Hide All</button>
+    </div>
+    <div class="exclusions-list">
+      {% for class in classes %}
+      <label class="exclusion-item">
+        <input
+          type="checkbox"
+          name="excluded_class_ids"
+          value="{{ class.id }}"
+          {% if class.id in excluded_class_ids %}checked{% endif %}
+        />
+        <span class="exclusion-class">{{ class.class_name }}</span>
+        <span class="exclusion-meta">{{ class.teacher_name }} · required {{ class.required_grade }}</span>
+      </label>
+      {% else %}
+      <p class="affinity-empty">No classes available yet.</p>
+      {% endfor %}
+    </div>
+    <button type="submit">Save Exclusions</button>
+  </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const showAllButton = document.getElementById("exclusions-show-all");
+    const hideAllButton = document.getElementById("exclusions-hide-all");
+    const exclusionCheckboxes = Array.from(
+      document.querySelectorAll('.exclusions-list input[name="excluded_class_ids"]')
+    );
+
+    const setAllChecked = (checked) => {
+      for (const checkbox of exclusionCheckboxes) {
+        checkbox.checked = checked;
+      }
+    };
+
+    if (showAllButton) {
+      showAllButton.addEventListener("click", () => {
+        setAllChecked(false);
+      });
+    }
+
+    if (hideAllButton) {
+      hideAllButton.addEventListener("click", () => {
+        setAllChecked(true);
+      });
+    }
+  })();
+</script>
+{% endblock %}

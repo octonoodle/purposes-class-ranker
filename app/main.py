@@ -19,6 +19,7 @@ app = FastAPI(title="Class Ranker")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 TWELFTH_GRADE_ONLY_COOKIE = "show_twelfth_grade_only"
+EXCLUDED_CLASSES_COOKIE = "excluded_class_ids"
 
 
 def redirect_with_message(
@@ -49,6 +50,25 @@ def set_recorder_cookie(response: RedirectResponse, recorded_by: str) -> Redirec
 
 def is_twelfth_grade_only_enabled(request: Request) -> bool:
     return request.cookies.get(TWELFTH_GRADE_ONLY_COOKIE, "0") == "1"
+
+
+def get_excluded_class_ids(request: Request) -> set[int]:
+    raw_cookie_value = (request.cookies.get(EXCLUDED_CLASSES_COOKIE) or "").strip()
+    if not raw_cookie_value:
+        return set()
+
+    parsed_ids: set[int] = set()
+    for chunk in raw_cookie_value.split(","):
+        normalized = chunk.strip()
+        if not normalized:
+            continue
+        try:
+            parsed_value = int(normalized)
+        except ValueError:
+            continue
+        if parsed_value > 0:
+            parsed_ids.add(parsed_value)
+    return parsed_ids
 
 
 def normalize_class_name(class_name: str) -> str:
@@ -206,6 +226,56 @@ def set_global_grade_filter(
     response.set_cookie(
         key=TWELFTH_GRADE_ONLY_COOKIE,
         value="1" if twelfth_only == "1" else "0",
+        max_age=60 * 60 * 24 * 365,
+        samesite="lax",
+    )
+    return response
+
+
+@app.get("/exclusions")
+def exclusions_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    message: str | None = None,
+) -> Any:
+    classes = db.execute(select(Class).order_by(Class.class_name.asc(), Class.class_code.asc())).scalars().all()
+    excluded_class_ids = get_excluded_class_ids(request)
+    return templates.TemplateResponse(
+        request=request,
+        name="exclusions.html",
+        context={
+            "classes": classes,
+            "excluded_class_ids": excluded_class_ids,
+            "message": message,
+        },
+    )
+
+
+@app.post("/exclusions")
+async def update_exclusions(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    form_data = await request.form()
+    submitted_ids: set[int] = set()
+    for raw_value in form_data.getlist("excluded_class_ids"):
+        try:
+            parsed_value = int(str(raw_value).strip())
+        except (TypeError, ValueError):
+            continue
+        if parsed_value > 0:
+            submitted_ids.add(parsed_value)
+
+    all_class_ids = set(db.execute(select(Class.id)).scalars().all())
+    cleaned_ids = sorted({class_id for class_id in submitted_ids if class_id in all_class_ids})
+
+    response = RedirectResponse(
+        url=f"/exclusions?{urlencode({'message': f'Excluded {len(cleaned_ids)} classes'})}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+    response.set_cookie(
+        key=EXCLUDED_CLASSES_COOKIE,
+        value=",".join(str(class_id) for class_id in cleaned_ids),
         max_age=60 * 60 * 24 * 365,
         samesite="lax",
     )
@@ -1012,20 +1082,36 @@ def rankings_page(
     db: Session = Depends(get_db),
 ) -> Any:
     twelfth_only = is_twelfth_grade_only_enabled(request)
+    excluded_class_ids = get_excluded_class_ids(request)
     sort_dir = "asc" if dir == "asc" else "desc"
     active_class_ids: set[int] | None = None
     if twelfth_only:
         active_class_ids = set()
-        active_pairs = db.execute(
-            select(Preference.good_class_id, Preference.bad_class_id)
-            .where(Preference.student_grade == 12)
-        ).all()
+        active_pairs_stmt = select(Preference.good_class_id, Preference.bad_class_id).where(Preference.student_grade == 12)
+        if excluded_class_ids:
+            active_pairs_stmt = (
+                active_pairs_stmt
+                .where(~Preference.good_class_id.in_(excluded_class_ids))
+                .where(~Preference.bad_class_id.in_(excluded_class_ids))
+            )
+        active_pairs = db.execute(active_pairs_stmt).all()
         for good_class_id, bad_class_id in active_pairs:
             active_class_ids.add(good_class_id)
             active_class_ids.add(bad_class_id)
 
     wins_stmt = select(Preference.good_class_id.label("class_id"), func.count(Preference.id).label("wins"))
     losses_stmt = select(Preference.bad_class_id.label("class_id"), func.count(Preference.id).label("losses"))
+    if excluded_class_ids:
+        wins_stmt = (
+            wins_stmt
+            .where(~Preference.good_class_id.in_(excluded_class_ids))
+            .where(~Preference.bad_class_id.in_(excluded_class_ids))
+        )
+        losses_stmt = (
+            losses_stmt
+            .where(~Preference.good_class_id.in_(excluded_class_ids))
+            .where(~Preference.bad_class_id.in_(excluded_class_ids))
+        )
     if twelfth_only:
         wins_stmt = wins_stmt.where(Preference.student_grade == 12)
         losses_stmt = losses_stmt.where(Preference.student_grade == 12)
@@ -1078,6 +1164,8 @@ def rankings_page(
             rankings_stmt = rankings_stmt.where(Class.id.in_(active_class_ids))
         else:
             rankings_stmt = rankings_stmt.where(text("1 = 0"))
+    if excluded_class_ids:
+        rankings_stmt = rankings_stmt.where(~Class.id.in_(excluded_class_ids))
     rankings = db.execute(
         rankings_stmt.order_by(*order_by_columns)
     ).all()
@@ -1099,8 +1187,20 @@ def required_vs_optional_page(
     db: Session = Depends(get_db),
 ) -> Any:
     twelfth_only = is_twelfth_grade_only_enabled(request)
+    excluded_class_ids = get_excluded_class_ids(request)
     wins_stmt = select(Preference.good_class_id.label("class_id"), func.count(Preference.id).label("wins"))
     losses_stmt = select(Preference.bad_class_id.label("class_id"), func.count(Preference.id).label("losses"))
+    if excluded_class_ids:
+        wins_stmt = (
+            wins_stmt
+            .where(~Preference.good_class_id.in_(excluded_class_ids))
+            .where(~Preference.bad_class_id.in_(excluded_class_ids))
+        )
+        losses_stmt = (
+            losses_stmt
+            .where(~Preference.good_class_id.in_(excluded_class_ids))
+            .where(~Preference.bad_class_id.in_(excluded_class_ids))
+        )
     if twelfth_only:
         wins_stmt = wins_stmt.where(Preference.student_grade == 12)
         losses_stmt = losses_stmt.where(Preference.student_grade == 12)
@@ -1118,7 +1218,7 @@ def required_vs_optional_page(
         else_=(wins_expr / total_ratings_expr),
     )
 
-    class_scores = db.execute(
+    class_scores_stmt = (
         select(
             Class.id,
             Class.required_grade,
@@ -1130,7 +1230,10 @@ def required_vs_optional_page(
         )
         .outerjoin(wins_subq, wins_subq.c.class_id == Class.id)
         .outerjoin(losses_subq, losses_subq.c.class_id == Class.id)
-    ).all()
+    )
+    if excluded_class_ids:
+        class_scores_stmt = class_scores_stmt.where(~Class.id.in_(excluded_class_ids))
+    class_scores = db.execute(class_scores_stmt).all()
 
     required_rows = [row for row in class_scores if row.required_grade > 0]
     optional_rows = [row for row in class_scores if row.required_grade == 0]
@@ -1180,7 +1283,14 @@ def comparisons_visualization_page(
     db: Session = Depends(get_db),
 ) -> Any:
     twelfth_only = is_twelfth_grade_only_enabled(request)
+    excluded_class_ids = get_excluded_class_ids(request)
     preferences_stmt = select(Preference.good_class_id, Preference.bad_class_id)
+    if excluded_class_ids:
+        preferences_stmt = (
+            preferences_stmt
+            .where(~Preference.good_class_id.in_(excluded_class_ids))
+            .where(~Preference.bad_class_id.in_(excluded_class_ids))
+        )
     if twelfth_only:
         preferences_stmt = preferences_stmt.where(Preference.student_grade == 12)
     preferences = db.execute(preferences_stmt).all()
@@ -1195,6 +1305,8 @@ def comparisons_visualization_page(
             classes_stmt = classes_stmt.where(Class.id.in_(active_class_ids))
         else:
             classes_stmt = classes_stmt.where(text("1 = 0"))
+    if excluded_class_ids:
+        classes_stmt = classes_stmt.where(~Class.id.in_(excluded_class_ids))
     classes = db.execute(classes_stmt).scalars().all()
 
     class_by_id = {class_row.id: class_row for class_row in classes}
@@ -1297,11 +1409,18 @@ def class_affinities_page(
     db: Session = Depends(get_db),
 ) -> Any:
     twelfth_only = is_twelfth_grade_only_enabled(request)
+    excluded_class_ids = get_excluded_class_ids(request)
     preference_stmt = select(
         Preference.student_name,
         Preference.good_class_id,
         Preference.bad_class_id,
     )
+    if excluded_class_ids:
+        preference_stmt = (
+            preference_stmt
+            .where(~Preference.good_class_id.in_(excluded_class_ids))
+            .where(~Preference.bad_class_id.in_(excluded_class_ids))
+        )
     if twelfth_only:
         preference_stmt = preference_stmt.where(Preference.student_grade == 12)
     preferences = db.execute(preference_stmt).all()
@@ -1316,6 +1435,8 @@ def class_affinities_page(
             classes_stmt = classes_stmt.where(Class.id.in_(active_class_ids))
         else:
             classes_stmt = classes_stmt.where(text("1 = 0"))
+    if excluded_class_ids:
+        classes_stmt = classes_stmt.where(~Class.id.in_(excluded_class_ids))
     classes = db.execute(classes_stmt).scalars().all()
     class_by_id = {class_row.id: class_row for class_row in classes}
 
