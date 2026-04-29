@@ -9,6 +9,7 @@ from sqlalchemy import case, func, select, text
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_db, wait_for_db_ready
+from .exclusions_store import load_excluded_class_ids
 from .models import Class, Preference
 
 app = FastAPI(title="Class Ranker Insights")
@@ -16,7 +17,6 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
 TWELFTH_GRADE_ONLY_COOKIE = "show_twelfth_grade_only"
-EXCLUDED_CLASSES_COOKIE = "excluded_class_ids"
 
 
 def is_twelfth_grade_only_enabled(request: Request) -> bool:
@@ -24,22 +24,8 @@ def is_twelfth_grade_only_enabled(request: Request) -> bool:
 
 
 def get_excluded_class_ids(request: Request) -> set[int]:
-    raw_cookie_value = (request.cookies.get(EXCLUDED_CLASSES_COOKIE) or "").strip()
-    if not raw_cookie_value:
-        return set()
-
-    parsed_ids: set[int] = set()
-    for chunk in raw_cookie_value.split(","):
-        normalized = chunk.strip()
-        if not normalized:
-            continue
-        try:
-            parsed_value = int(normalized)
-        except ValueError:
-            continue
-        if parsed_value > 0:
-            parsed_ids.add(parsed_value)
-    return parsed_ids
+    _ = request
+    return load_excluded_class_ids()
 
 
 @app.on_event("startup")

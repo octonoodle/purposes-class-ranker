@@ -13,13 +13,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
 from .database import Base, engine, get_db, wait_for_db_ready
+from .exclusions_store import load_excluded_class_ids, save_excluded_class_ids
 from .models import Class, Preference, Student
 
 app = FastAPI(title="Class Ranker")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 TWELFTH_GRADE_ONLY_COOKIE = "show_twelfth_grade_only"
-EXCLUDED_CLASSES_COOKIE = "excluded_class_ids"
 
 
 def redirect_with_message(
@@ -53,22 +53,8 @@ def is_twelfth_grade_only_enabled(request: Request) -> bool:
 
 
 def get_excluded_class_ids(request: Request) -> set[int]:
-    raw_cookie_value = (request.cookies.get(EXCLUDED_CLASSES_COOKIE) or "").strip()
-    if not raw_cookie_value:
-        return set()
-
-    parsed_ids: set[int] = set()
-    for chunk in raw_cookie_value.split(","):
-        normalized = chunk.strip()
-        if not normalized:
-            continue
-        try:
-            parsed_value = int(normalized)
-        except ValueError:
-            continue
-        if parsed_value > 0:
-            parsed_ids.add(parsed_value)
-    return parsed_ids
+    _ = request
+    return load_excluded_class_ids()
 
 
 def normalize_class_name(class_name: str) -> str:
@@ -268,18 +254,12 @@ async def update_exclusions(
 
     all_class_ids = set(db.execute(select(Class.id)).scalars().all())
     cleaned_ids = sorted({class_id for class_id in submitted_ids if class_id in all_class_ids})
+    save_excluded_class_ids(set(cleaned_ids))
 
-    response = RedirectResponse(
+    return RedirectResponse(
         url=f"/exclusions?{urlencode({'message': f'Excluded {len(cleaned_ids)} classes'})}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
-    response.set_cookie(
-        key=EXCLUDED_CLASSES_COOKIE,
-        value=",".join(str(class_id) for class_id in cleaned_ids),
-        max_age=60 * 60 * 24 * 365,
-        samesite="lax",
-    )
-    return response
 
 
 @app.get("/classes")
